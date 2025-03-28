@@ -3,9 +3,11 @@ use actix_web::http::StatusCode;
 use std::sync::Arc;
 use std::fs;
 
-use lumos_server::api;
-use lumos_server::db::executor::DbExecutor;
-use lumos_server::models::db::QueryRequest;
+// 使用extern crate并重命名包名
+extern crate lumos_server as lumos_server_crate;
+use lumos_server_crate::api;
+use lumos_server_crate::db::executor::DbExecutor;
+use lumos_server_crate::models::db::QueryRequest;
 
 #[actix_web::test]
 async fn test_health_endpoint() {

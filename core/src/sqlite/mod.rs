@@ -2,7 +2,7 @@ pub mod connection;
 pub mod transaction;
 pub mod schema;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use rusqlite::{Connection, params};
 use crate::{LumosError, Result};
 use connection::RowData;
@@ -14,7 +14,7 @@ pub struct SqliteEngine {
     /// Connection pool for managing SQLite connections
     pool: Arc<connection::ConnectionPool>,
     /// Default connection for backward compatibility
-    default_connection: Option<Connection>,
+    default_connection: Mutex<Option<Connection>>,
 }
 
 impl SqliteEngine {
@@ -23,7 +23,7 @@ impl SqliteEngine {
         Self {
             path: path.to_string(),
             pool: Arc::new(connection::ConnectionPool::new(path, 10)), // Default pool size of 10
-            default_connection: None,
+            default_connection: Mutex::new(None),
         }
     }
     
@@ -32,12 +32,12 @@ impl SqliteEngine {
         Self {
             path: path.to_string(),
             pool: Arc::new(connection::ConnectionPool::new(path, pool_size)),
-            default_connection: None,
+            default_connection: Mutex::new(None),
         }
     }
 
     /// Initialize the SQLite engine
-    pub fn init(&mut self) -> Result<()> {
+    pub fn init(&self) -> Result<()> {
         log::info!("Initializing SQLite engine with database at: {}", self.path);
         
         // Create a default connection for backward compatibility
@@ -45,7 +45,7 @@ impl SqliteEngine {
         
         // Store the connection - don't run PRAGMA commands here since that's
         // already handled in the connection pool
-        self.default_connection = Some(conn);
+        *self.default_connection.lock().unwrap() = Some(conn);
         
         // Pre-warm the connection pool by creating a connection
         // This will also set up all the PRAGMA settings
@@ -55,9 +55,9 @@ impl SqliteEngine {
         Ok(())
     }
 
-    /// Get a reference to the default connection (not from the pool)
-    pub fn connection(&self) -> Result<&Connection> {
-        self.default_connection.as_ref().ok_or_else(|| LumosError::Sqlite("SQLite connection not initialized".to_string()))
+    /// Get a connection from the pool for use in queries
+    pub fn connection(&self) -> Result<connection::PooledConn> {
+        self.pool.get()
     }
     
     /// Get a connection from the pool
@@ -65,17 +65,17 @@ impl SqliteEngine {
         self.pool.get()
     }
 
-    /// Execute a simple query without returning results using the default connection
+    /// Execute a simple query without returning results using a connection from the pool
     pub fn execute(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<usize> {
         let conn = self.connection()?;
-        let rows_affected = conn.execute(sql, params)?;
+        let rows_affected = conn.conn.execute(sql, params)?;
         Ok(rows_affected)
     }
     
-    /// Execute a query and return all rows using the default connection
+    /// Execute a query and return all rows using a connection from the pool
     pub fn query_all(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<RowData>> {
         let conn = self.connection()?;
-        let mut stmt = conn.prepare(sql)?;
+        let mut stmt = conn.conn.prepare(sql)?;
         let mut query_result = stmt.query(params)?;
         let mut rows_data = Vec::new();
         while let Some(row) = query_result.next()? {
@@ -84,7 +84,7 @@ impl SqliteEngine {
         Ok(rows_data)
     }
     
-    /// Create a table if it doesn't exist using the default connection
+    /// Create a table if it doesn't exist using a connection from the pool
     pub fn create_table(&self, table_name: &str, columns: &[(&str, &str)]) -> Result<()> {
         let columns_sql = columns
             .iter()
@@ -99,41 +99,43 @@ impl SqliteEngine {
         Ok(())
     }
     
-    /// Begin a new transaction using the default connection
+    /// Begin a new transaction
     pub fn begin_transaction(&self) -> Result<transaction::Transaction> {
-        let conn = self.connection()?;
+        let conn = Connection::open(&self.path)?;
         conn.execute("BEGIN TRANSACTION", [])?;
-        Ok(transaction::Transaction::new(conn))
+        Ok(transaction::Transaction::new_owned(conn))
     }
     
-    /// Get a schema manager for the default connection
+    /// Get a schema manager
     pub fn schema_manager(&self) -> Result<schema::SchemaManager> {
-        let conn = self.connection()?;
-        Ok(schema::SchemaManager::new(conn))
+        let conn = Connection::open(&self.path)?;
+        Ok(schema::SchemaManager::new_owned(conn))
     }
     
     /// Create optimized indexes for OLTP workloads
     pub fn optimize_for_oltp(&self, tables: &[&str]) -> Result<()> {
-        let schema_mgr = self.schema_manager()?;
-        
         for &table in tables {
+            // Get a new connection for each table to avoid borrowing issues
+            let conn = Connection::open(&self.path)?;
+            let schema_mgr = schema::SchemaManager::new_owned(conn);
+            
             // Get the schema for the table
-            let columns = schema_mgr.get_table_schema(table)?;
-            
-            // Create indexes for primary key columns if not already indexed
-            for column in &columns {
-                if column.is_primary_key {
-                    // Create an index on the primary key if one doesn't exist
-                    let index_name = format!("idx_{}_pk", table);
-                    schema_mgr.create_index(table, &[&column.name], true)?;
-                    log::debug!("Created primary key index: {}", index_name);
+            if let Ok(columns) = schema_mgr.get_table_schema(table) {
+                // Create indexes for primary key columns if not already indexed
+                for column in &columns {
+                    if column.is_primary_key {
+                        // Create an index on the primary key if one doesn't exist
+                        schema_mgr.create_index(table, &[&column.name], true)?;
+                        log::debug!("Created primary key index for {}.{}", table, column.name);
+                    }
                 }
+                
+                // Analyze the table to improve query planning
+                let analyze_sql = format!("ANALYZE {}", table);
+                let mut conn = Connection::open(&self.path)?;
+                conn.execute(&analyze_sql, [])?;
+                log::debug!("Analyzed table: {}", table);
             }
-            
-            // Analyze the table to improve query planning
-            let conn = self.connection()?;
-            conn.execute(&format!("ANALYZE {}", table), [])?;
-            log::debug!("Analyzed table: {}", table);
         }
         
         Ok(())
@@ -146,12 +148,6 @@ impl SqliteEngine {
     
     /// Close all connections
     pub fn close(self) -> Result<()> {
-        // Close the default connection
-        if let Some(conn) = self.default_connection {
-            // Explicitly close the connection
-            drop(conn);
-        }
-        
         // Close the connection pool
         self.pool.close()?;
         
@@ -159,3 +155,7 @@ impl SqliteEngine {
         Ok(())
     }
 }
+
+// 明确实现Send和Sync特性
+unsafe impl Send for SqliteEngine {}
+unsafe impl Sync for SqliteEngine {}

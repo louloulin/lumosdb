@@ -318,7 +318,7 @@ impl StrategyExecutor {
             
             for pk in &pk_columns {
                 // Find the index of the primary key column
-                let idx = self.get_column_index(sqlite_conn, &config.table_name, pk)?;
+                let idx = self.get_column_index(&sqlite_conn, &config.table_name, pk)?;
                 if idx < row.values.len() {
                     if let Some(value) = row.get_ref(idx) {
                         where_clauses.push(format!("{} = ?", pk));
@@ -591,7 +591,7 @@ impl StrategyExecutor {
         // Get column names and indices
         let column_names = self.get_column_list_vec(config)?;
         let column_indices: Vec<usize> = column_names.iter()
-            .filter_map(|col| self.get_column_index(sqlite_conn, &config.table_name, col).ok())
+            .filter_map(|col| self.get_column_index(&sqlite_conn, &config.table_name, col).ok())
             .collect();
         
         if column_indices.is_empty() {

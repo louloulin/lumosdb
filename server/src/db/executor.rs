@@ -1,42 +1,55 @@
 use std::path::Path;
-use std::collections::HashMap;
-use lumos_core::{LumosDB, LumosError, RowData};
+use std::sync::{Arc, Mutex, RwLock};
+use lumos_core::{LumosError};
+use lumos_core::sqlite::connection::RowData;
 use crate::models::db::{TableInfo, ColumnInfo};
 
 /// 数据库执行器，负责执行SQL语句和查询
 pub struct DbExecutor {
-    db: LumosDB,
+    path: String,
+    engine: Arc<Mutex<lumos_core::sqlite::SqliteEngine>>,
 }
 
 impl DbExecutor {
     /// 创建新的数据库执行器
     pub fn new<P: AsRef<Path>>(path: P) -> Result<Self, LumosError> {
-        let db = LumosDB::open(path)?;
-        Ok(Self { db })
+        let path_str = path.as_ref().to_str().unwrap_or("").to_string();
+        let mut db = lumos_core::sqlite::SqliteEngine::new(&path_str);
+        db.init()?;
+        
+        Ok(Self { 
+            path: path_str,
+            engine: Arc::new(Mutex::new(db)) 
+        })
     }
     
     /// 执行查询并返回结果
     pub fn execute_query(&self, sql: &str, params: &[String]) -> Result<Vec<RowData>, LumosError> {
-        self.db.query(sql, params)
+        let engine = self.engine.lock().unwrap();
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+        engine.query_all(sql, &param_refs)
     }
     
     /// 执行SQL语句并返回影响的行数
     pub fn execute(&self, sql: &str, params: &[String]) -> Result<usize, LumosError> {
-        self.db.execute(sql, params)
+        let engine = self.engine.lock().unwrap();
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p as &dyn rusqlite::ToSql).collect();
+        engine.execute(sql, &param_refs)
     }
     
     /// 获取所有表名
     pub fn list_tables(&self) -> Result<Vec<TableInfo>, LumosError> {
-        let rows = self.db.query("SELECT name, 
+        let engine = self.engine.lock().unwrap();
+        let rows = engine.query_all("SELECT name, 
                             (SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND tbl_name=m.name) as count 
                            FROM sqlite_master m 
                            WHERE type='table' AND name NOT LIKE 'sqlite_%'", &[])?;
         
         let mut tables = Vec::new();
         for row in rows {
-            let name = row.get_string("name").unwrap_or_default();
-            let count: usize = row.get_string("count")
-                .unwrap_or_default()
+            let name = row.get("name").unwrap_or(&String::default()).clone();
+            let count: usize = row.get("count")
+                .unwrap_or(&String::default())
                 .parse()
                 .unwrap_or(0);
                 
@@ -51,15 +64,16 @@ impl DbExecutor {
     
     /// 获取表结构
     pub fn get_table_schema(&self, table_name: &str) -> Result<Vec<ColumnInfo>, LumosError> {
+        let engine = self.engine.lock().unwrap();
         let sql = format!("PRAGMA table_info({})", table_name);
-        let rows = self.db.query(&sql, &[])?;
+        let rows = engine.query_all(&sql, &[])?;
         
         let mut columns = Vec::new();
         for row in rows {
-            let name = row.get_string("name").unwrap_or_default();
-            let data_type = row.get_string("type").unwrap_or_default();
-            let is_nullable = row.get_string("notnull").unwrap_or("1".to_string()) == "0";
-            let is_primary_key = row.get_string("pk").unwrap_or("0".to_string()) == "1";
+            let name = row.get("name").unwrap_or(&String::default()).clone();
+            let data_type = row.get("type").unwrap_or(&String::default()).clone();
+            let is_nullable = row.get("notnull").unwrap_or(&"1".to_string()) == "0";
+            let is_primary_key = row.get("pk").unwrap_or(&"0".to_string()) == "1";
             
             columns.push(ColumnInfo {
                 name,
@@ -71,20 +85,4 @@ impl DbExecutor {
         
         Ok(columns)
     }
-}
-
-/// 表信息
-#[derive(Debug)]
-pub struct TableInfo {
-    pub name: String,
-    pub rows: usize,
-}
-
-/// 列信息
-#[derive(Debug)]
-pub struct ColumnInfo {
-    pub name: String,
-    pub data_type: String,
-    pub is_nullable: bool,
-    pub is_primary_key: bool,
 } 

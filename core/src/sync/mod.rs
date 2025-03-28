@@ -116,7 +116,7 @@ impl SyncManager {
         
         // Get tables from SQLite
         let sqlite_conn = self.sqlite.connection()?;
-        let sqlite_schema = crate::sqlite::schema::SchemaManager::new(sqlite_conn);
+        let sqlite_schema = crate::sqlite::schema::SchemaManager::new(&sqlite_conn);
         let sqlite_tables = sqlite_schema.get_tables()?;
         
         // Filter tables based on configuration
@@ -204,7 +204,7 @@ impl SyncManager {
         let duckdb_conn = self.duckdb.connection()?;
         
         // Get schema information
-        let sqlite_schema = crate::sqlite::schema::SchemaManager::new(sqlite_conn);
+        let sqlite_schema = crate::sqlite::schema::SchemaManager::new(&sqlite_conn);
         let columns = sqlite_schema.get_table_schema(table)?;
         
         // Create table in DuckDB if it doesn't exist
@@ -227,7 +227,8 @@ impl SyncManager {
                     
                     sql.push_str(duckdb_type);
                     
-                    if !col.is_nullable {
+                    // Also add columns that are marked as NOT NULL
+                    if col.is_not_null {
                         sql.push_str(" NOT NULL");
                     }
                     

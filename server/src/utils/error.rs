@@ -25,11 +25,9 @@ pub enum AppError {
 impl From<lumos_core::LumosError> for AppError {
     fn from(err: lumos_core::LumosError) -> Self {
         match err {
-            lumos_core::LumosError::SQLite(e) => AppError::Database(e),
+            lumos_core::LumosError::Sqlite(e) => AppError::Database(e),
             lumos_core::LumosError::DuckDb(e) => AppError::Database(e),
-            lumos_core::LumosError::IO(e) => AppError::Internal(e.to_string()),
-            lumos_core::LumosError::Config(e) => AppError::InvalidArgument(e),
-            lumos_core::LumosError::Schema(e) => AppError::Database(e),
+            lumos_core::LumosError::Io(e) => AppError::Internal(e.to_string()),
             lumos_core::LumosError::InvalidArgument(e) => AppError::InvalidArgument(e),
             lumos_core::LumosError::Internal(e) => AppError::Internal(e),
             lumos_core::LumosError::NotFound(e) => AppError::NotFound(e),

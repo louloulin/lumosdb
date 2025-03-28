@@ -3,6 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 use rusqlite::{Connection, Row};
 use crate::{LumosError, Result};
+use std::ops::Deref;
 
 /// Data extracted from a SQLite row
 #[derive(Debug, Clone)]
@@ -201,7 +202,7 @@ impl ConnectionPool {
 /// A connection borrowed from a connection pool
 pub struct PooledConn<'a> {
     /// The actual SQLite connection
-    conn: Connection,
+    pub conn: Connection,
     /// Reference to the pool
     pool: &'a ConnectionPool,
 }
@@ -269,6 +270,14 @@ impl<'a> PooledConn<'a> {
     pub fn begin_transaction(&self) -> Result<crate::sqlite::transaction::Transaction> {
         self.conn.execute("BEGIN TRANSACTION", [])?;
         Ok(crate::sqlite::transaction::Transaction::new(&self.conn))
+    }
+}
+
+impl<'a> Deref for PooledConn<'a> {
+    type Target = Connection;
+    
+    fn deref(&self) -> &Self::Target {
+        &self.conn
     }
 }
 

@@ -58,7 +58,13 @@ where
         let is_authorized = req
             .headers()
             .get(api_key_header)
-            .map(|value| value == HeaderValue::from_str(&self.api_key).unwrap_or_default())
+            .map(|value| {
+                if let Ok(key) = HeaderValue::from_str(&self.api_key) {
+                    value == key
+                } else {
+                    false
+                }
+            })
             .unwrap_or(false);
 
         // 添加到请求扩展中，用于后续处理
