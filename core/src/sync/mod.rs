@@ -1,5 +1,6 @@
 pub mod strategy;
 pub mod tracker;
+pub mod schema;
 
 use crate::{LumosError, Result, sqlite::SqliteEngine, duckdb::DuckDbEngine};
 use std::collections::{HashMap, HashSet};

@@ -2,6 +2,7 @@ use crate::{LumosError, Result, sqlite::SqliteEngine, duckdb::DuckDbEngine};
 use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use std::collections::HashMap;
+use crate::sync::schema::{SchemaManager, SchemaDifference};
 
 /// Synchronization strategy for data between SQLite and DuckDB
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -209,83 +210,223 @@ impl StrategyExecutor {
             return Ok(0);
         }
         
-        // Check if table exists in DuckDB
-        let duckdb_conn = self.duckdb.connection()?;
+        log::debug!("Found {} changed rows for table '{}'", rows.len(), config.table_name);
+        
+        // Ensure table exists in DuckDB
         let table_exists = self.duckdb.table_exists(&config.table_name)?;
-        
         if !table_exists {
-            // Create table if it doesn't exist
+            log::debug!("Table '{}' doesn't exist in DuckDB, creating it", config.table_name);
             self.create_table_in_duckdb(config)?;
+        } else {
+            // Check for schema differences and handle them
+            self.handle_schema_differences(config)?;
         }
         
-        // For incremental sync, delete matching records first
-        if !rows.is_empty() && !pk_columns.is_empty() {
-            // Get list of primary key values
-            let mut pk_values = Vec::new();
+        // For each changed record, update or insert in DuckDB (upsert)
+        let mut inserted = 0;
+        let mut updated = 0;
+        
+        let duckdb_conn = self.duckdb.connection()?;
+        let columns_vec = self.get_column_list_vec(config)?;
+        
+        // Start a transaction for better performance
+        duckdb_conn.execute("BEGIN TRANSACTION", [])?;
+        
+        for row in &rows {
+            // Build a WHERE clause for the primary key
+            let mut where_clauses = Vec::new();
+            let mut where_params = Vec::new();
             
-            for row in &rows {
-                let pk_value = if pk_columns.len() == 1 {
-                    // Single column primary key
-                    let pk_col = &pk_columns[0];
-                    let pk_idx = self.get_column_index(sqlite_conn, &config.table_name, pk_col)?;
-                    
-                    match row.get_ref(pk_idx)? {
-                        rusqlite::types::ValueRef::Null => "NULL".to_string(),
-                        rusqlite::types::ValueRef::Integer(i) => i.to_string(),
-                        rusqlite::types::ValueRef::Real(f) => f.to_string(),
-                        rusqlite::types::ValueRef::Text(s) => format!("'{}'", std::str::from_utf8(s).unwrap_or_default().replace('\'', "''")),
-                        rusqlite::types::ValueRef::Blob(_) => "NULL".to_string(),
+            for pk in &pk_columns {
+                // Find the index of the primary key column
+                let idx = self.get_column_index(sqlite_conn, &config.table_name, pk)?;
+                if idx < row.as_ref().column_count() {
+                    let value = row.get_ref(idx)?;
+                    where_clauses.push(format!("{} = ?", pk));
+                    where_params.push(value);
+                }
+            }
+            
+            if where_clauses.is_empty() {
+                return Err(LumosError::Sync(format!("No primary key columns found for table '{}'", config.table_name)));
+            }
+            
+            let where_clause = where_clauses.join(" AND ");
+            
+            // Check if record exists in DuckDB
+            let exists_query = format!("SELECT COUNT(*) FROM {} WHERE {}", config.table_name, where_clause);
+            
+            let mut exists_stmt = duckdb_conn.prepare(&exists_query)?;
+            
+            // Convert where_params to a format suitable for DuckDB
+            let mut duckdb_params = Vec::<Box<dyn duckdb::ToSql>>::new();
+            for param in &where_params {
+                match param.data_type() {
+                    rusqlite::types::Type::Null => duckdb_params.push(Box::new(Option::<String>::None)),
+                    rusqlite::types::Type::Integer => {
+                        let v: i64 = param.as_i64().unwrap_or(0);
+                        duckdb_params.push(Box::new(v));
+                    },
+                    rusqlite::types::Type::Real => {
+                        let v: f64 = param.as_f64().unwrap_or(0.0);
+                        duckdb_params.push(Box::new(v));
+                    },
+                    rusqlite::types::Type::Text => {
+                        let v: String = param.as_str().unwrap_or("").to_string();
+                        duckdb_params.push(Box::new(v));
+                    },
+                    rusqlite::types::Type::Blob => {
+                        let v: Vec<u8> = param.as_blob().unwrap_or(&[]).to_vec();
+                        duckdb_params.push(Box::new(v));
+                    },
+                }
+            }
+            
+            let duckdb_param_refs: Vec<&dyn duckdb::ToSql> = duckdb_params
+                .iter()
+                .map(|p| p.as_ref())
+                .collect();
+                
+            let exists: i64 = exists_stmt.query_row(duckdb_param_refs.as_slice(), |r| r.get(0))?;
+            
+            if exists > 0 {
+                // Update existing record
+                let mut set_clauses = Vec::new();
+                let mut set_params = Vec::<Box<dyn duckdb::ToSql>>::new();
+                
+                for (i, col) in columns_vec.iter().enumerate() {
+                    // Skip primary key columns in SET clause
+                    if pk_columns.contains(col) {
+                        continue;
                     }
-                } else {
-                    // Composite primary key
-                    let parts: Vec<String> = pk_columns.iter().map(|pk_col| {
-                        let pk_idx = match self.get_column_index(sqlite_conn, &config.table_name, pk_col) {
-                            Ok(idx) => idx,
-                            Err(_) => return "NULL".to_string(),
-                        };
-                        
-                        match row.get_ref(pk_idx) {
-                            Ok(rusqlite::types::ValueRef::Null) => "NULL".to_string(),
-                            Ok(rusqlite::types::ValueRef::Integer(i)) => i.to_string(),
-                            Ok(rusqlite::types::ValueRef::Real(f)) => f.to_string(),
-                            Ok(rusqlite::types::ValueRef::Text(s)) => format!("'{}'", std::str::from_utf8(s).unwrap_or_default().replace('\'', "''")),
-                            Ok(rusqlite::types::ValueRef::Blob(_)) => "NULL".to_string(),
-                            Err(_) => "NULL".to_string(),
-                        }
-                    }).collect();
                     
-                    parts.join(", ")
-                };
+                    set_clauses.push(format!("{} = ?", col));
+                    
+                    if i < row.as_ref().column_count() {
+                        let value = row.get_ref(i)?;
+                        match value.data_type() {
+                            rusqlite::types::Type::Null => set_params.push(Box::new(Option::<String>::None)),
+                            rusqlite::types::Type::Integer => {
+                                let v: i64 = value.as_i64().unwrap_or(0);
+                                set_params.push(Box::new(v));
+                            },
+                            rusqlite::types::Type::Real => {
+                                let v: f64 = value.as_f64().unwrap_or(0.0);
+                                set_params.push(Box::new(v));
+                            },
+                            rusqlite::types::Type::Text => {
+                                let v: String = value.as_str().unwrap_or("").to_string();
+                                set_params.push(Box::new(v));
+                            },
+                            rusqlite::types::Type::Blob => {
+                                let v: Vec<u8> = value.as_blob().unwrap_or(&[]).to_vec();
+                                set_params.push(Box::new(v));
+                            },
+                        }
+                    }
+                }
                 
-                pk_values.push(pk_value);
-            }
-            
-            // Delete matching records
-            if !pk_values.is_empty() {
-                let pk_list = pk_columns.join(", ");
-                let where_clause = if pk_columns.len() == 1 {
-                    format!("{} IN ({})", pk_columns[0], pk_values.join(", "))
-                } else {
-                    // For composite keys, use combination
-                    format!("({}) IN ({})", pk_list, pk_values.iter().map(|v| format!("({})", v)).collect::<Vec<_>>().join(", "))
-                };
+                if !set_clauses.is_empty() {
+                    let update_sql = format!(
+                        "UPDATE {} SET {} WHERE {}",
+                        config.table_name,
+                        set_clauses.join(", "),
+                        where_clause
+                    );
+                    
+                    // Combine set_params and where_params for the update
+                    let mut all_params = set_params;
+                    
+                    // Add where params
+                    for param in &where_params {
+                        match param.data_type() {
+                            rusqlite::types::Type::Null => all_params.push(Box::new(Option::<String>::None)),
+                            rusqlite::types::Type::Integer => {
+                                let v: i64 = param.as_i64().unwrap_or(0);
+                                all_params.push(Box::new(v));
+                            },
+                            rusqlite::types::Type::Real => {
+                                let v: f64 = param.as_f64().unwrap_or(0.0);
+                                all_params.push(Box::new(v));
+                            },
+                            rusqlite::types::Type::Text => {
+                                let v: String = param.as_str().unwrap_or("").to_string();
+                                all_params.push(Box::new(v));
+                            },
+                            rusqlite::types::Type::Blob => {
+                                let v: Vec<u8> = param.as_blob().unwrap_or(&[]).to_vec();
+                                all_params.push(Box::new(v));
+                            },
+                        }
+                    }
+                    
+                    let param_refs: Vec<&dyn duckdb::ToSql> = all_params
+                        .iter()
+                        .map(|p| p.as_ref())
+                        .collect();
+                        
+                    duckdb_conn.execute(&update_sql, param_refs.as_slice())?;
+                    updated += 1;
+                }
+            } else {
+                // Insert new record
+                let mut values = Vec::new();
+                let mut insert_params = Vec::<Box<dyn duckdb::ToSql>>::new();
                 
-                let delete_sql = format!("DELETE FROM {} WHERE {}", config.table_name, where_clause);
+                for i in 0..row.as_ref().column_count() {
+                    values.push("?".to_string());
+                    
+                    let value = row.get_ref(i)?;
+                    match value.data_type() {
+                        rusqlite::types::Type::Null => insert_params.push(Box::new(Option::<String>::None)),
+                        rusqlite::types::Type::Integer => {
+                            let v: i64 = value.as_i64().unwrap_or(0);
+                            insert_params.push(Box::new(v));
+                        },
+                        rusqlite::types::Type::Real => {
+                            let v: f64 = value.as_f64().unwrap_or(0.0);
+                            insert_params.push(Box::new(v));
+                        },
+                        rusqlite::types::Type::Text => {
+                            let v: String = value.as_str().unwrap_or("").to_string();
+                            insert_params.push(Box::new(v));
+                        },
+                        rusqlite::types::Type::Blob => {
+                            let v: Vec<u8> = value.as_blob().unwrap_or(&[]).to_vec();
+                            insert_params.push(Box::new(v));
+                        },
+                    }
+                }
                 
-                duckdb_conn.execute(&delete_sql, [])
-                    .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+                let insert_sql = format!(
+                    "INSERT INTO {} ({}) VALUES ({})",
+                    config.table_name,
+                    columns_vec.join(", "),
+                    values.join(", ")
+                );
+                
+                let param_refs: Vec<&dyn duckdb::ToSql> = insert_params
+                    .iter()
+                    .map(|p| p.as_ref())
+                    .collect();
+                    
+                duckdb_conn.execute(&insert_sql, param_refs.as_slice())?;
+                inserted += 1;
             }
         }
         
-        // Insert data into DuckDB
-        let row_count = self.insert_data_to_duckdb(config, &rows)?;
+        // Commit the transaction
+        duckdb_conn.execute("COMMIT", [])?;
         
-        // Update last sync time
+        // Update the last sync time
         self.update_last_sync_time(&config.table_name)?;
         
-        log::info!("Incremental sync completed for table '{}': {} rows synchronized", config.table_name, row_count);
+        log::info!(
+            "Incremental sync completed for table '{}': {} rows inserted, {} rows updated",
+            config.table_name, inserted, updated
+        );
         
-        Ok(row_count)
+        Ok(inserted + updated)
     }
 
     /// Execute a snapshot synchronization for a table
@@ -581,5 +722,79 @@ impl StrategyExecutor {
         sqlite_conn.execute(sql, rusqlite::params![table, current_time, current_time])?;
         
         Ok(())
+    }
+
+    /// Handle schema differences between SQLite and DuckDB
+    fn handle_schema_differences(&self, config: &TableSyncConfig) -> Result<bool> {
+        log::debug!("Checking for schema differences in table '{}'", config.table_name);
+        
+        // Create a schema manager
+        let schema_manager = SchemaManager::new(
+            self.sqlite.clone(),
+            self.duckdb.clone()
+        );
+        
+        // Get schemas from both databases
+        let sqlite_schema = schema_manager.get_sqlite_schema(&config.table_name)?;
+        let duckdb_schema = schema_manager.get_duckdb_schema(&config.table_name)?;
+        
+        // Compare schemas
+        let diff = schema_manager.compare_schemas(&sqlite_schema, &duckdb_schema);
+        
+        // Check if there are any differences
+        let has_differences = !diff.added_columns.is_empty() || 
+                              !diff.removed_columns.is_empty() || 
+                              !diff.type_changed_columns.is_empty() || 
+                              !diff.constraint_changed_columns.is_empty();
+        
+        if has_differences {
+            log::info!("Schema differences detected in table '{}':", config.table_name);
+            
+            if !diff.added_columns.is_empty() {
+                log::info!("  Added columns: {}", diff.added_columns
+                    .iter()
+                    .map(|(name, _)| name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", "));
+            }
+            
+            if !diff.removed_columns.is_empty() {
+                log::info!("  Removed columns: {}", diff.removed_columns
+                    .iter()
+                    .map(|(name, _)| name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", "));
+            }
+            
+            if !diff.type_changed_columns.is_empty() {
+                log::info!("  Type changed columns: {}", diff.type_changed_columns
+                    .iter()
+                    .map(|(name, _, _)| name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", "));
+            }
+            
+            if !diff.constraint_changed_columns.is_empty() {
+                log::info!("  Constraint changed columns: {}", diff.constraint_changed_columns
+                    .iter()
+                    .map(|(name, _, _)| name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", "));
+            }
+            
+            // Apply schema changes
+            let changes_applied = schema_manager.apply_schema_changes(&config.table_name, &diff)?;
+            
+            if changes_applied {
+                log::info!("Schema changes applied to table '{}'", config.table_name);
+            } else {
+                log::warn!("No schema changes were applied to table '{}'", config.table_name);
+            }
+            
+            Ok(changes_applied)
+        } else {
+            log::debug!("No schema differences found for table '{}'", config.table_name);
+            Ok(false)
+        }
     }
 }
