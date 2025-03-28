@@ -1,46 +1,85 @@
-# Lumos-DB: 轻量级数据平台与AI Agent结合
+# Lumos-DB
 
-Lumos-DB is a lightweight data platform designed to work with AI Agents, providing efficient storage, retrieval, and processing of data with both OLTP and OLAP capabilities.
+Lumos-DB是一个轻量级数据平台，专为AI代理设计，提供高效的数据存储和查询功能。
 
-## Features
+## 功能特点
 
-- Hybrid storage model (SQLite + DuckDB)
-- Vector embeddings for AI applications
-- Real-time stream processing
-- Query optimization for complex analytics
-- Multi-level caching system
+- **多引擎支持**：集成SQLite和DuckDB引擎，提供不同类型的数据处理能力
+- **矢量搜索**：内置向量存储和相似度搜索功能，支持AI和机器学习应用
+- **高效缓存**：多层次缓存策略，提高查询性能
+- **灵活查询**：支持SQL查询和API操作，满足不同应用场景
+- **数据同步**：提供表结构和数据同步功能
 
-## Documentation
+## 安装
 
-- [Project Plan](./plan2.md)
-- [Development Guide](./docs/packaging.md)
-- [Dependency Management](./docs/dependencies.md) - Resolving common dependency issues
-
-## Getting Started
-
-To build and run Lumos-DB:
+### 从源码构建
 
 ```bash
-# Install just command runner
-# Mac: brew install just
-# Linux: curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+# 克隆仓库
+git clone https://github.com/yourusername/lumos-db.git
+cd lumos-db
 
-# Build the project
-just build
+# 构建项目
+cargo build --release
 
-# Run tests
-just test
-
-# Package the project
-just package
+# 安装二进制文件（可选）
+cargo install --path .
 ```
 
-See [packaging documentation](./docs/packaging.md) for more details.
+## 基本用法
 
-## Known Issues
+### 初始化数据库
 
-If you encounter dependency conflicts between arrow-arith and chrono, please refer to the [dependency management guide](./docs/dependencies.md) for solutions.
+```bash
+# 使用默认路径初始化
+cargo run -- init
 
-## License
+# 指定数据库路径
+cargo run -- init --path mydata.db
+```
 
-MIT 
+### 执行查询
+
+```bash
+# 创建表
+cargo run -- query --path mydata.db --sql "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT, age INTEGER);"
+
+# 插入数据
+cargo run -- query --path mydata.db --sql "INSERT INTO users (name, email, age) VALUES ('张三', 'zhangsan@example.com', 30);"
+
+# 查询数据
+cargo run -- query --path mydata.db --sql "SELECT * FROM users;"
+```
+
+### 启动服务器（待实现）
+
+```bash
+# 使用默认设置启动服务器
+cargo run -- serve
+
+# 指定主机和端口
+cargo run -- serve --host 0.0.0.0 --port 3000
+```
+
+## 项目结构
+
+```
+lumos-db/
+├── core/               # 核心库代码
+│   ├── src/
+│   │   ├── sqlite/     # SQLite引擎相关代码
+│   │   ├── duckdb/     # DuckDB引擎相关代码
+│   │   ├── query/      # 查询处理逻辑
+│   │   ├── sync/       # 数据同步功能
+│   │   ├── vector/     # 向量存储和搜索
+│   │   └── lib.rs      # 库入口
+│   └── Cargo.toml      # 核心库依赖配置
+├── src/                # CLI应用代码
+├── examples/           # 使用示例
+├── tests/              # 测试代码
+└── Cargo.toml          # 主项目依赖配置
+```
+
+## 许可证
+
+[MIT](LICENSE) 

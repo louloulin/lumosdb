@@ -118,14 +118,19 @@ impl ConnectionPool {
         let conn = Connection::open(&self.path)?;
         
         // Configure the connection for OLTP workloads
-        // WAL journal mode for better concurrency
-        conn.execute("PRAGMA journal_mode = WAL", [])?;
-        // NORMAL sync mode for better performance with acceptable safety
-        conn.execute("PRAGMA synchronous = NORMAL", [])?;
-        // Enable foreign keys
-        conn.execute("PRAGMA foreign_keys = ON", [])?;
-        // Set a reasonable cache size
-        conn.execute("PRAGMA cache_size = 10000", [])?; // ~10MB cache
+        // Set foreign keys, synchronous mode, and cache size - these don't return results
+        conn.execute_batch("
+            PRAGMA foreign_keys = ON;
+            PRAGMA synchronous = NORMAL;
+            PRAGMA cache_size = 10000;
+        ")?;
+        
+        // WAL journal mode returns a result, handle it separately
+        {
+            let mut stmt = conn.prepare("PRAGMA journal_mode = WAL")?;
+            let _: String = stmt.query_row([], |row| row.get(0))?;
+        }
+        
         // Set busy timeout
         conn.busy_timeout(Duration::from_secs(5))?;
         

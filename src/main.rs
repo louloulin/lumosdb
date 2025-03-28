@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use lumos_core::LumosError;
 use log::{info, error};
 use std::path::PathBuf;
+use lumos_core::{sqlite::SqliteEngine, LumosConfig, LumosError};
 
 /// Lumos-DB: Lightweight data platform for AI Agents
 #[derive(Parser)]
@@ -78,23 +78,60 @@ fn main() -> Result<()> {
     match &cli.command {
         Commands::Init { path } => {
             info!("Initializing database at: {}", path.display());
-            // TODO: Initialize the database
+            let path_str = path.to_string_lossy().to_string();
+            let mut engine = SqliteEngine::new(&path_str);
+            engine.init().context("Failed to initialize database")?;
             println!("Database initialized successfully at: {}", path.display());
         }
         
         Commands::Query { sql, path } => {
             info!("Executing query on database: {}", path.display());
-            // TODO: Execute the query
-            println!("Query executed successfully");
+            let path_str = path.to_string_lossy().to_string();
+            let mut engine = SqliteEngine::new(&path_str);
+            engine.init().context("Failed to initialize database")?;
+            
+            // Execute the query and get results
+            let result = engine.query_all(sql, &[]).context("Failed to execute query")?;
+            
+            // Display results
+            if result.is_empty() {
+                println!("Query executed successfully (no results)");
+            } else {
+                println!("Query executed successfully with {} rows:", result.len());
+                
+                // Print column headers
+                if let Some(first_row) = result.first() {
+                    let column_names = first_row.values.keys().collect::<Vec<_>>();
+                    for name in &column_names {
+                        print!("{}\t", name);
+                    }
+                    println!();
+                    
+                    // Print separator
+                    for _ in &column_names {
+                        print!("--------\t");
+                    }
+                    println!();
+                    
+                    // Print data rows
+                    for row in &result {
+                        for name in &column_names {
+                            if let Some(value) = row.values.get(*name) {
+                                print!("{}\t", value);
+                            } else {
+                                print!("NULL\t");
+                            }
+                        }
+                        println!();
+                    }
+                }
+            }
         }
         
         Commands::Serve { host, port, db_path } => {
             info!("Starting server at {}:{} with database: {}", host, port, db_path.display());
-            // TODO: Start the server
-            println!("Server is running at {}:{}", host, port);
-            
-            // Keep the server running
-            std::thread::park();
+            println!("Server functionality is not yet implemented");
+            println!("Server would run at {}:{} with database: {}", host, port, db_path.display());
         }
     }
     

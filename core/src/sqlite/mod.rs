@@ -43,22 +43,12 @@ impl SqliteEngine {
         // Create a default connection for backward compatibility
         let conn = Connection::open(&self.path)?;
         
-        // Enable foreign keys
-        conn.execute("PRAGMA foreign_keys = ON", [])?;
-        
-        // Set journal mode to WAL for better concurrency
-        conn.execute("PRAGMA journal_mode = WAL", [])?;
-        
-        // Set synchronous mode to NORMAL for better performance with acceptable safety
-        conn.execute("PRAGMA synchronous = NORMAL", [])?;
-        
-        // Set a reasonable cache size
-        conn.execute("PRAGMA cache_size = 10000", [])?; // ~10MB cache
-        
-        // Store the connection
+        // Store the connection - don't run PRAGMA commands here since that's
+        // already handled in the connection pool
         self.default_connection = Some(conn);
         
         // Pre-warm the connection pool by creating a connection
+        // This will also set up all the PRAGMA settings
         let _ = self.pool.get()?;
         
         log::info!("SQLite engine initialized successfully");
