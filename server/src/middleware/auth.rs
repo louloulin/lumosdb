@@ -1,14 +1,47 @@
-use actix_web::dev::{ServiceRequest, ServiceResponse, Service, Transform};
-use actix_web::http::header::{HeaderName, HeaderValue};
-use actix_web::{Error, HttpMessage};
-use futures::future::{ok, Ready};
-use futures::Future;
-use std::pin::Pin;
+use std::future::{ready, Ready};
+use std::rc::Rc;
 use std::task::{Context, Poll};
-use std::env;
+use actix_web::{
+    dev::{forward_ready, Service, ServiceRequest, ServiceResponse, Transform},
+    error::ErrorUnauthorized,
+    http::header,
+    Error,
+};
+use futures_util::future::LocalBoxFuture;
+use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
+use serde::{Deserialize, Serialize};
+use log::debug;
 
-pub struct Auth;
+// 定义JWT声明结构
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    sub: String,
+    exp: usize,
+    iat: usize,
+}
 
+// 认证中间件结构
+pub struct Auth {
+    jwt_secret: String,
+}
+
+impl Auth {
+    // 创建新的认证中间件
+    pub fn new(jwt_secret: String) -> Self {
+        Self { jwt_secret }
+    }
+}
+
+// 默认无需密钥的认证中间件，用于开发环境
+impl Default for Auth {
+    fn default() -> Self {
+        Self {
+            jwt_secret: "lumos_dev_secret".to_string(),
+        }
+    }
+}
+
+// 实现中间件转换特性
 impl<S, B> Transform<S, ServiceRequest> for Auth
 where
     S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
@@ -22,15 +55,17 @@ where
     type Future = Ready<Result<Self::Transform, Self::InitError>>;
 
     fn new_transform(&self, service: S) -> Self::Future {
-        // 从环境变量获取API密钥
-        let api_key = env::var("LUMOS_API_KEY").unwrap_or_default();
-        ok(AuthMiddleware { service, api_key })
+        ready(Ok(AuthMiddleware {
+            service,
+            jwt_secret: self.jwt_secret.clone(),
+        }))
     }
 }
 
+// 认证中间件服务
 pub struct AuthMiddleware<S> {
     service: S,
-    api_key: String,
+    jwt_secret: String,
 }
 
 impl<S, B> Service<ServiceRequest> for AuthMiddleware<S>
@@ -41,50 +76,74 @@ where
 {
     type Response = ServiceResponse<B>;
     type Error = Error;
-    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>>>>;
+    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
 
-    fn poll_ready(&self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx)
-    }
+    forward_ready!(service);
 
     fn call(&self, req: ServiceRequest) -> Self::Future {
-        // 如果未设置API密钥，则跳过验证
-        if self.api_key.is_empty() {
-            return Box::pin(self.service.call(req));
+        let jwt_secret = self.jwt_secret.clone();
+        
+        // 检查是否为不需要认证的路径（例如健康检查和登录/注册）
+        let path = req.path();
+        if path.starts_with("/api/health") || 
+           path == "/api/auth/login" || 
+           path == "/api/auth/register" {
+            // 不需要认证的路径
+            let fut = self.service.call(req);
+            return Box::pin(async move {
+                fut.await
+            });
         }
-
-        // 检查是否包含API密钥
-        let api_key_header = HeaderName::from_static("x-api-key");
-        let is_authorized = req
-            .headers()
-            .get(api_key_header)
-            .map(|value| {
-                if let Ok(key) = HeaderValue::from_str(&self.api_key) {
-                    value == key
-                } else {
-                    false
+        
+        // 获取Authorization头
+        let auth_header = req.headers().get(header::AUTHORIZATION);
+        
+        // 检查API密钥
+        if let Some(api_key) = req.headers().get("X-API-Key") {
+            if api_key == "lumos_dev_key" { // 在生产环境中应该使用环境变量或配置
+                let fut = self.service.call(req);
+                return Box::pin(async move {
+                    fut.await
+                });
+            }
+        }
+        
+        // 检查JWT令牌
+        match auth_header {
+            Some(auth_value) => {
+                let auth_str = auth_value.to_str().unwrap_or("");
+                if auth_str.starts_with("Bearer ") {
+                    let token = &auth_str[7..]; // 去掉"Bearer "前缀
+                    
+                    // 验证JWT令牌
+                    match decode::<Claims>(
+                        token,
+                        &DecodingKey::from_secret(jwt_secret.as_bytes()),
+                        &Validation::new(Algorithm::HS256),
+                    ) {
+                        Ok(_) => {
+                            // 令牌有效，继续处理
+                            debug!("JWT验证成功");
+                            let fut = self.service.call(req);
+                            return Box::pin(async move {
+                                fut.await
+                            });
+                        }
+                        Err(e) => {
+                            debug!("JWT验证失败: {}", e);
+                            return Box::pin(async move {
+                                Err(ErrorUnauthorized("无效的令牌"))
+                            });
+                        }
+                    }
                 }
-            })
-            .unwrap_or(false);
-
-        // 添加到请求扩展中，用于后续处理
-        req.extensions_mut().insert(AuthStatus {
-            authorized: is_authorized,
-        });
-
-        Box::pin(self.service.call(req))
+            }
+            None => {}
+        }
+        
+        // 未提供有效的认证信息
+        Box::pin(async move {
+            Err(ErrorUnauthorized("需要认证"))
+        })
     }
-}
-
-#[derive(Debug, Clone)]
-pub struct AuthStatus {
-    pub authorized: bool,
-}
-
-// 用于检查请求是否已授权的辅助函数
-pub fn is_authorized(req: &ServiceRequest) -> bool {
-    req.extensions()
-        .get::<AuthStatus>()
-        .map(|status| status.authorized)
-        .unwrap_or(false)
 } 

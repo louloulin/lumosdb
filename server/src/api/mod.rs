@@ -16,4 +16,6 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/rest")
             .configure(rest::configure)
     );
-} 
+}
+
+pub use rest::server::Server; 

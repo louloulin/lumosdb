@@ -1,12 +1,13 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ApiResponse<T> {
     pub success: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub data: Option<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
-    pub timestamp: u64,
 }
 
 impl<T> ApiResponse<T> {
@@ -15,16 +16,14 @@ impl<T> ApiResponse<T> {
             success: true,
             data: Some(data),
             error: None,
-            timestamp: current_timestamp(),
         }
     }
 
-    pub fn error(message: String) -> Self {
+    pub fn error(message: &str) -> Self {
         Self {
             success: false,
             data: None,
-            error: Some(message),
-            timestamp: current_timestamp(),
+            error: Some(message.to_string()),
         }
     }
 }

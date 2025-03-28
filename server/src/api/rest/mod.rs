@@ -10,4 +10,7 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
     );
     
     // 添加其他API端点（向量搜索、AI等）将在后续阶段实现
-} 
+}
+
+pub mod handlers;
+pub mod server; 
