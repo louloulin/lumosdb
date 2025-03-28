@@ -23,7 +23,7 @@ pub struct Embedding {
 }
 
 /// 创建集合的请求
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CreateCollectionRequest {
     /// 集合名称
     pub name: String,
@@ -32,39 +32,57 @@ pub struct CreateCollectionRequest {
 }
 
 /// 添加嵌入向量的请求
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AddEmbeddingsRequest {
     /// 嵌入向量列表
-    pub embeddings: Vec<Embedding>,
+    pub ids: Vec<String>,
+    /// 向量数据
+    pub embeddings: Vec<Vec<f32>>,
+    /// 可选的元数据
+    #[serde(default)]
+    pub metadata: Option<Vec<HashMap<String, serde_json::Value>>>,
 }
 
 /// 相似度搜索请求
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchRequest {
     /// 查询向量
     pub vector: Vec<f32>,
     /// 返回结果的数量
+    #[serde(default = "default_top_k")]
     pub top_k: usize,
-    /// 可选的过滤条件
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub filter: Option<HashMap<String, serde_json::Value>>,
-    /// 是否包含向量数据在结果中
-    #[serde(default)]
-    pub include_value: bool,
+}
+
+/// 创建索引请求
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateIndexRequest {
+    /// 参数
+    pub parameters: HashMap<String, serde_json::Value>,
+}
+
+/// 集合信息
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CollectionInfo {
+    /// 集合名称
+    pub name: String,
+    /// 向量维度
+    pub dimension: usize,
+    /// 嵌入数量
+    pub count: usize,
+    /// 是否已索引
+    pub indexed: bool,
+    /// 索引类型
+    pub index_type: Option<String>,
 }
 
 /// 相似度搜索结果
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     /// 嵌入ID
     pub id: String,
     /// 相似度分数
     pub score: f32,
-    /// 可选的向量数据
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub vector: Option<Vec<f32>>,
     /// 可选的元数据
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
@@ -106,4 +124,9 @@ pub struct CreateCollectionResponse {
 pub struct ListCollectionsResponse {
     /// 集合列表
     pub collections: Vec<Collection>,
+}
+
+/// 默认的top_k值
+fn default_top_k() -> usize {
+    10
 } 

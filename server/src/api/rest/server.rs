@@ -4,23 +4,30 @@ use actix_cors::Cors;
 use log::info;
 
 use crate::config::AppConfig;
-use crate::db::executor::Executor;
-use crate::db::vector_executor::VectorExecutor;
+use crate::db::DbExecutor;
+use crate::db::CachedDbExecutor;
+use crate::db::VectorExecutor;
 use crate::api::rest::handlers;
 use crate::middleware::auth::Auth;
 use crate::middleware::logger::Logger;
 
 pub struct Server {
     config: AppConfig,
-    executor: Arc<Executor>,
+    executor: Arc<DbExecutor>,
+    cached_executor: Arc<CachedDbExecutor>,
     vector_executor: Arc<VectorExecutor>,
 }
 
 impl Server {
     pub fn new(config: AppConfig) -> Result<Self, String> {
-        let executor = match Executor::new(&config.db_path) {
+        let executor = match DbExecutor::new(&config.db_path) {
             Ok(executor) => Arc::new(executor),
             Err(e) => return Err(format!("Failed to create executor: {}", e)),
+        };
+        
+        let cached_executor = match CachedDbExecutor::new(&config.db_path) {
+            Ok(executor) => Arc::new(executor),
+            Err(e) => return Err(format!("Failed to create cached executor: {}", e)),
         };
         
         let vector_executor = match VectorExecutor::new(&config.db_path) {
@@ -31,6 +38,7 @@ impl Server {
         Ok(Self {
             config,
             executor,
+            cached_executor,
             vector_executor,
         })
     }
@@ -38,6 +46,7 @@ impl Server {
     pub async fn run(&self) -> Result<(), String> {
         let server_addr = format!("{}:{}", self.config.host, self.config.port);
         let executor = self.executor.clone();
+        let cached_executor = self.cached_executor.clone();
         let vector_executor = self.vector_executor.clone();
 
         info!("Starting server at {}", server_addr);
@@ -58,6 +67,7 @@ impl Server {
                 .wrap(cors) // CORS中间件
                 .wrap(middleware::Logger::default()) // Actix日志
                 .app_data(web::Data::new(executor.clone()))
+                .app_data(web::Data::new(cached_executor.clone()))
                 .app_data(web::Data::new(vector_executor.clone()))
                 
                 // 健康检查API
@@ -80,6 +90,14 @@ impl Server {
                         .route("/{db_name}/tables/{table_name}/rows/{row_id}", web::put().to(handlers::update_row))
                         .route("/{db_name}/tables/{table_name}/rows/{row_id}", web::delete().to(handlers::delete_row))
                         .route("/{db_name}/query", web::post().to(handlers::execute_query))
+                )
+                
+                // 缓存API路由
+                .service(
+                    web::scope("/api/cache")
+                        .route("", web::delete().to(handlers::clear_all_cache))
+                        .route("/tables/{table_name}", web::delete().to(handlers::invalidate_table_cache))
+                        .route("/status", web::get().to(handlers::get_cache_status))
                 )
                 
                 // 向量API路由

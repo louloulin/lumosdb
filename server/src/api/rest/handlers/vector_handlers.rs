@@ -2,7 +2,7 @@ use std::sync::Arc;
 use actix_web::{web, HttpResponse, Responder};
 use log::error;
 
-use crate::db::vector_executor::VectorExecutor;
+use crate::db::VectorExecutor;
 use crate::models::response::ApiResponse;
 use crate::models::vector::{
     CreateCollectionRequest, AddEmbeddingsRequest, SearchRequest,
