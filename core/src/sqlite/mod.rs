@@ -5,6 +5,7 @@ pub mod schema;
 use std::sync::Arc;
 use rusqlite::{Connection, params};
 use crate::{LumosError, Result};
+use connection::RowData;
 
 /// SQLite engine for Lumos-DB
 pub struct SqliteEngine {
@@ -82,13 +83,15 @@ impl SqliteEngine {
     }
     
     /// Execute a query and return all rows using the default connection
-    pub fn query_all(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<rusqlite::Row>> {
+    pub fn query_all(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<RowData>> {
         let conn = self.connection()?;
         let mut stmt = conn.prepare(sql)?;
-        let rows = stmt.query_map(params, |row| Ok(row.clone()))?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| LumosError::Sqlite(e.to_string()))?;
-        Ok(rows)
+        let mut query_result = stmt.query(params)?;
+        let mut rows_data = Vec::new();
+        while let Some(row) = query_result.next()? {
+            rows_data.push(RowData::from_row(row)?);
+        }
+        Ok(rows_data)
     }
     
     /// Create a table if it doesn't exist using the default connection

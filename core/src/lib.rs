@@ -23,6 +23,12 @@ pub enum LumosError {
     Vector(String),
     /// IO errors
     Io(std::io::Error),
+    /// Invalid argument errors
+    InvalidArgument(String),
+    /// Internal errors
+    Internal(String),
+    /// Not found errors
+    NotFound(String),
     /// Generic errors
     Other(String),
 }
@@ -36,6 +42,9 @@ impl fmt::Display for LumosError {
             LumosError::Sync(msg) => write!(f, "Sync error: {}", msg),
             LumosError::Vector(msg) => write!(f, "Vector error: {}", msg),
             LumosError::Io(err) => write!(f, "IO error: {}", err),
+            LumosError::InvalidArgument(msg) => write!(f, "Invalid argument: {}", msg),
+            LumosError::Internal(msg) => write!(f, "Internal error: {}", msg),
+            LumosError::NotFound(msg) => write!(f, "Not found: {}", msg),
             LumosError::Other(msg) => write!(f, "Error: {}", msg),
         }
     }
@@ -52,6 +61,12 @@ impl From<std::io::Error> for LumosError {
 impl From<rusqlite::Error> for LumosError {
     fn from(err: rusqlite::Error) -> Self {
         LumosError::Sqlite(err.to_string())
+    }
+}
+
+impl From<duckdb::Error> for LumosError {
+    fn from(err: duckdb::Error) -> Self {
+        LumosError::DuckDb(err.to_string())
     }
 }
 

@@ -2,7 +2,7 @@ use crate::{
     LumosError, Result,
     query::{Query, QueryResult, QueryParam, EngineType},
     sqlite::SqliteEngine,
-    duckdb::DuckDbEngine
+    duckdb::{DuckDbEngine, value_ref_to_json}
 };
 use serde_json::Value as JsonValue;
 
@@ -18,7 +18,7 @@ pub fn execute_on_sqlite(engine: &SqliteEngine, query: &Query) -> Result<QueryRe
                 QueryParam::Integer(i) => i,
                 QueryParam::Float(f) => f,
                 QueryParam::Boolean(b) => b,
-                QueryParam::Null => &() as &dyn rusqlite::ToSql,
+                QueryParam::Null => &None::<i32> as &dyn rusqlite::ToSql,
             }
         })
         .collect();
@@ -31,7 +31,7 @@ pub fn execute_on_sqlite(engine: &SqliteEngine, query: &Query) -> Result<QueryRe
     let mut columns = Vec::with_capacity(column_count);
     
     for i in 0..column_count {
-        if let Some(name) = stmt.column_name(i)? {
+        if let Ok(name) = stmt.column_name(i) {
             columns.push(name.to_string());
         } else {
             columns.push(format!("column_{}", i));
@@ -92,7 +92,7 @@ pub fn execute_on_duckdb(engine: &DuckDbEngine, query: &Query) -> Result<QueryRe
                 QueryParam::Integer(i) => i,
                 QueryParam::Float(f) => f,
                 QueryParam::Boolean(b) => b,
-                QueryParam::Null => &() as &dyn duckdb::ToSql,
+                QueryParam::Null => &None::<i32> as &dyn duckdb::ToSql,
             }
         })
         .collect();
@@ -106,8 +106,7 @@ pub fn execute_on_duckdb(engine: &DuckDbEngine, query: &Query) -> Result<QueryRe
     let mut columns = Vec::with_capacity(column_count);
     
     for i in 0..column_count {
-        if let Some(name) = stmt.column_name(i)
-            .map_err(|e| LumosError::DuckDb(e.to_string()))? {
+        if let Ok(name) = stmt.column_name(i) {
             columns.push(name.to_string());
         } else {
             columns.push(format!("column_{}", i));
@@ -130,15 +129,13 @@ pub fn execute_on_duckdb(engine: &DuckDbEngine, query: &Query) -> Result<QueryRe
                 let mut json_row = Vec::with_capacity(column_count);
                 
                 for i in 0..column_count {
-                    let value = match row.get_ref(i)
-                        .map_err(|e| LumosError::DuckDb(e.to_string()))? {
-                        duckdb::types::ValueRef::Null => JsonValue::Null,
-                        duckdb::types::ValueRef::Integer(i) => JsonValue::from(i),
-                        duckdb::types::ValueRef::Real(f) => JsonValue::from(f),
-                        duckdb::types::ValueRef::Text(s) => JsonValue::from(s),
-                        duckdb::types::ValueRef::Blob(_) => JsonValue::from("<BLOB>"),
+                    let value_ref = match row.get_ref(i)
+                        .map_err(|e| LumosError::DuckDb(e.to_string())) {
+                        Ok(val) => val,
+                        Err(_) => continue,
                     };
                     
+                    let value = value_ref_to_json(&value_ref);
                     json_row.push(value);
                 }
                 

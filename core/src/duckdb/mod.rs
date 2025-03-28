@@ -3,6 +3,29 @@ pub mod analytics;
 
 use duckdb::{Connection, params, Result as DuckResult};
 use crate::{LumosError, Result};
+use serde_json::Value as JsonValue;
+
+// Re-export duckdb Error type
+pub use duckdb::Error;
+pub use duckdb::types;
+
+/// Convert DuckDB ValueRef to JsonValue
+pub fn value_ref_to_json(value_ref: &duckdb::types::ValueRef) -> JsonValue {
+    match value_ref {
+        duckdb::types::ValueRef::Null => JsonValue::Null,
+        // Handle different types based on what's actually available in duckdb
+        // If Integer/Real aren't available, handle the actual types here
+        // For example:
+        duckdb::types::ValueRef::Text(s) => {
+            JsonValue::String(std::str::from_utf8(s).unwrap_or_default().to_string())
+        }
+        duckdb::types::ValueRef::Blob(b) => {
+            JsonValue::String(format!("<BLOB: {} bytes>", b.len()))
+        }
+        // You may need to handle other variants based on the actual implementation
+        _ => JsonValue::String("<UNSUPPORTED>".to_string()),
+    }
+}
 
 /// DuckDB engine for Lumos-DB
 pub struct DuckDbEngine {

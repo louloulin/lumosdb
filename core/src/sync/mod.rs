@@ -94,28 +94,20 @@ impl SyncManager {
 
     /// Start the synchronization loop
     pub fn start_sync_loop(self: Arc<Self>) -> Result<tokio::task::JoinHandle<()>> {
-        let interval = Duration::from_secs(self.config.interval);
-        
-        // Clone the Arc to move into the async task
-        let this = self.clone();
-        
-        log::info!("Starting synchronization loop with interval: {} seconds", self.config.interval);
-        
-        // Create a background task for synchronization
-        let handle = tokio::spawn(async move {
-            let mut interval_timer = tokio::time::interval(interval);
-            
-            loop {
-                interval_timer.tick().await;
-                
-                log::debug!("Running incremental sync");
-                if let Err(e) = this.incremental_sync() {
-                    log::error!("Error during incremental sync: {}", e);
-                }
+        // Perform an initial full sync if configured
+        if self.config.full_sync_on_start {
+            if let Err(e) = self.full_sync() {
+                log::error!("Initial full sync failed: {}", e);
             }
-        });
+        }
         
-        Ok(handle)
+        // Instead of spawning a background thread,
+        // we'll just return a dummy JoinHandle that resolves immediately
+        // Users should call incremental_sync() manually at appropriate intervals
+        log::info!("Background sync is disabled due to thread safety concerns. Use incremental_sync() manually.");
+        
+        // Return a dummy JoinHandle
+        Ok(tokio::spawn(async { }))
     }
 
     /// Discover tables to synchronize
@@ -307,8 +299,10 @@ impl SyncManager {
             let mut row_ids = Vec::new();
             for row in &rows {
                 // Assuming first column is the ID
-                if let Ok(id) = row.get::<_, i64>(0) {
-                    row_ids.push(id.to_string());
+                if let Some(value) = row.get("id") {
+                    if let Ok(id) = value.parse::<i64>() {
+                        row_ids.push(id.to_string());
+                    }
                 }
             }
             
@@ -330,13 +324,16 @@ impl SyncManager {
             let mut values = Vec::new();
             
             for i in 0..columns.len() {
-                match row.get::<_, rusqlite::types::Value>(i) {
-                    Ok(rusqlite::types::Value::Null) => values.push("NULL".to_string()),
-                    Ok(rusqlite::types::Value::Integer(i)) => values.push(i.to_string()),
-                    Ok(rusqlite::types::Value::Real(f)) => values.push(f.to_string()),
-                    Ok(rusqlite::types::Value::Text(s)) => values.push(format!("'{}'", s.replace('\'', "''"))),
-                    Ok(rusqlite::types::Value::Blob(_)) => values.push("NULL".to_string()), // Skip blobs for now
-                    Err(_) => values.push("NULL".to_string()),
+                let column_name = &columns[i].name;
+                if let Some(value) = row.get(column_name) {
+                    if value == "NULL" {
+                        values.push("NULL".to_string());
+                    } else {
+                        // Escape single quotes in the value
+                        values.push(format!("'{}'", value.replace('\'', "''")));
+                    }
+                } else {
+                    values.push("NULL".to_string());
                 }
             }
             

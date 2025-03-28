@@ -75,8 +75,8 @@ impl ChangeTracker {
                     let mut tables = HashSet::new();
                     
                     for row in rows {
-                        if let Ok(table_name) = row.get::<_, String>(0) {
-                            tables.insert(table_name);
+                        if let Some(table_name) = row.get("table_name") {
+                            tables.insert(table_name.to_string());
                         }
                     }
                     

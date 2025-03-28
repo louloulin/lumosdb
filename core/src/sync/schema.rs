@@ -17,6 +17,51 @@ pub struct ColumnInfo {
     pub default_value: Option<String>,
 }
 
+/// Data extracted from a DuckDB row
+#[derive(Debug, Clone)]
+pub struct DuckDBRowData {
+    /// Column values stored as strings
+    pub values: HashMap<String, String>,
+}
+
+impl DuckDBRowData {
+    /// Create a new DuckDBRowData from a DuckDB row
+    pub fn from_row(row: &duckdb::Row) -> Result<Self> {
+        let mut values = HashMap::new();
+        let stmt = row.as_ref();
+        let column_count = stmt.column_count();
+        
+        for i in 0..column_count {
+            let column_name = stmt.column_name(i)
+                .map_err(|e| LumosError::DuckDb(e.to_string()))?
+                .to_string();
+                
+            // Get value as string - simplified to avoid direct mapping of DuckDB types
+            let value = match row.get_ref(i) {
+                Ok(value_ref) => {
+                    match value_ref {
+                        duckdb::types::ValueRef::Null => "NULL".to_string(),
+                        duckdb::types::ValueRef::Text(s) => {
+                            std::str::from_utf8(s).unwrap_or_default().to_string()
+                        },
+                        _ => "<VALUE>".to_string(), // Simplified approach for now
+                    }
+                },
+                Err(_) => "<ERROR>".to_string(),
+            };
+            
+            values.insert(column_name, value);
+        }
+        
+        Ok(Self { values })
+    }
+    
+    /// Get a value by column name
+    pub fn get(&self, column: &str) -> Option<&String> {
+        self.values.get(column)
+    }
+}
+
 /// Schema manager for handling schema differences
 pub struct SchemaManager {
     /// SQLite engine
@@ -41,26 +86,26 @@ impl SchemaManager {
         
         // Get table info
         let sql = format!("PRAGMA table_info({})", table_name);
-        let mut stmt = conn.prepare(&sql)?;
-        let rows = stmt.query_map([], |row| {
-            let name: String = row.get(1)?;
-            let data_type: String = row.get(2)?;
-            let is_nullable: bool = row.get(3)? == 0; // notnull = 0 means nullable
-            let default_value: Option<String> = row.get(4)?;
-            let is_primary_key: bool = row.get(5)? == 1;
+        let rows = self.sqlite.query_all(&sql, &[])?;
+        
+        for row_data in rows {
+            let name = row_data.get("name").cloned().unwrap_or_default();
+            let data_type = row_data.get("type").cloned().unwrap_or_default();
+            let notnull = row_data.get("notnull").and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+            let is_nullable = notnull == 0; // notnull = 0 means nullable
+            let default_value = row_data.get("dflt_value").cloned();
+            let pk = row_data.get("pk").and_then(|v| v.parse::<i32>().ok()).unwrap_or(0);
+            let is_primary_key = pk == 1;
             
-            Ok(ColumnInfo {
-                name,
-                data_type,
+            let col_info = ColumnInfo {
+                name: name.clone(),
+                data_type: data_type.clone(),
                 is_primary_key,
                 is_nullable,
                 default_value,
-            })
-        })?;
-        
-        for row_result in rows {
-            let col_info = row_result?;
-            schema.insert(col_info.name.clone(), col_info);
+            };
+            
+            schema.insert(name, col_info);
         }
         
         Ok(schema)
@@ -79,24 +124,44 @@ impl SchemaManager {
         
         // Get column information
         let sql = format!("PRAGMA table_info('{}')", table_name);
-        let result = conn.execute(&sql)?;
         
-        while let Some(row) = result.fetch()? {
-            let name: String = row.get(1)?;
-            let data_type: String = row.get(2)?;
-            let is_nullable: bool = row.get(3)? == 0; // notnull = 0 means nullable
-            let default_value: Option<String> = row.get(4)?;
-            let is_primary_key: bool = row.get(5)? == 1;
+        // Prepare statement and execute query
+        let mut stmt = conn.prepare(&sql)
+            .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+        let mut rows = stmt.query([])
+            .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+
+        // Process each row 
+        while let Some(row) = rows.next()
+            .map_err(|e| LumosError::DuckDb(e.to_string()))? {
+            
+            let row_data = DuckDBRowData::from_row(row)?;
+            
+            // Extract column info from row data
+            let name = row_data.get("name").cloned().unwrap_or_default();
+            let data_type = row_data.get("type").cloned().unwrap_or_default();
+            let notnull_str = row_data.get("notnull").cloned().unwrap_or_default();
+            let notnull = notnull_str.parse::<i32>().unwrap_or(0);
+            let is_nullable = notnull == 0; // notnull = 0 means nullable
+            
+            let default_value = match row_data.get("dflt_value") {
+                Some(val) if val != "NULL" => Some(val.clone()),
+                _ => None
+            };
+            
+            let pk_str = row_data.get("pk").cloned().unwrap_or_default();
+            let pk = pk_str.parse::<i32>().unwrap_or(0);
+            let is_primary_key = pk == 1;
             
             let col_info = ColumnInfo {
-                name,
-                data_type,
+                name: name.clone(),
+                data_type: data_type.clone(),
                 is_primary_key,
                 is_nullable,
                 default_value,
             };
             
-            schema.insert(col_info.name.clone(), col_info);
+            schema.insert(name, col_info);
         }
         
         Ok(schema)
@@ -168,7 +233,7 @@ impl SchemaManager {
             );
             
             log::info!("Adding column to DuckDB: {}", sql);
-            conn.execute(&sql)?;
+            conn.execute(&sql, [])?;
             changes_applied = true;
         }
         
@@ -223,7 +288,7 @@ impl SchemaManager {
         
         // Create temp table
         let create_sql = format!("CREATE TABLE {} ({})", temp_table, columns);
-        duckdb_conn.execute(&create_sql)?;
+        duckdb_conn.execute(&create_sql, [])?;
         
         // Get column names that exist in both tables
         let duckdb_schema = self.get_duckdb_schema(table_name)?;
@@ -237,15 +302,15 @@ impl SchemaManager {
         let column_list = common_columns.join(", ");
         let copy_sql = format!("INSERT INTO {} ({}) SELECT {} FROM {}", 
                            temp_table, column_list, column_list, table_name);
-        duckdb_conn.execute(&copy_sql)?;
+        duckdb_conn.execute(&copy_sql, [])?;
         
         // Drop original table
         let drop_sql = format!("DROP TABLE {}", table_name);
-        duckdb_conn.execute(&drop_sql)?;
+        duckdb_conn.execute(&drop_sql, [])?;
         
         // Rename temp table to original
         let rename_sql = format!("ALTER TABLE {} RENAME TO {}", temp_table, table_name);
-        duckdb_conn.execute(&rename_sql)?;
+        duckdb_conn.execute(&rename_sql, [])?;
         
         log::info!("Recreated table '{}' with updated schema", table_name);
         

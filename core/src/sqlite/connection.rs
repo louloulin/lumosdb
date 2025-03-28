@@ -1,8 +1,45 @@
 use std::sync::{Arc, Mutex};
 use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
-use rusqlite::Connection;
+use rusqlite::{Connection, Row};
 use crate::{LumosError, Result};
+
+/// Data extracted from a SQLite row
+#[derive(Debug, Clone)]
+pub struct RowData {
+    /// Column values stored as strings
+    pub values: HashMap<String, String>,
+}
+
+impl RowData {
+    /// Create a new RowData from a SQLite row
+    pub fn from_row(row: &Row) -> Result<Self> {
+        let mut values = HashMap::new();
+        
+        // Get column names and count from the statement
+        let stmt = row.as_ref();
+        let column_count = stmt.column_count();
+        
+        for i in 0..column_count {
+            let column_name = stmt.column_name(i)?.to_string();
+            let value: String = match row.get::<_, rusqlite::types::Value>(i)? {
+                rusqlite::types::Value::Null => "NULL".to_string(),
+                rusqlite::types::Value::Integer(i) => i.to_string(),
+                rusqlite::types::Value::Real(f) => f.to_string(),
+                rusqlite::types::Value::Text(s) => s,
+                rusqlite::types::Value::Blob(_) => "<BLOB>".to_string(),
+            };
+            values.insert(column_name, value);
+        }
+        
+        Ok(Self { values })
+    }
+    
+    /// Get a value by column name
+    pub fn get(&self, column: &str) -> Option<&String> {
+        self.values.get(column)
+    }
+}
 
 /// A connection pool for SQLite connections
 pub struct ConnectionPool {
@@ -192,28 +229,35 @@ impl<'a> PooledConn<'a> {
     }
     
     /// Query with statement caching based on usage patterns
-    pub fn query_all(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<rusqlite::Row>> {
+    pub fn query_all(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<RowData>> {
         // Record this statement usage
         self.pool.record_prepared_statement(sql);
         
         // Determine if this statement should be cached
         let should_cache = self.pool.should_cache_statement(sql);
         
-        let rows = if should_cache {
+        let rows_data = if should_cache {
             // Use prepared_cached for frequently used statements
             let mut stmt = self.conn.prepare_cached(sql)?;
-            stmt.query_map(params, |row| Ok(row.clone()))?
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(|e| LumosError::Sqlite(e.to_string()))?
+            let mut query_result = stmt.query(params)?;
+            let mut data = Vec::new();
+            
+            while let Some(row) = query_result.next()? {
+                data.push(RowData::from_row(row)?);
+            }
+            data
         } else {
             // Use regular prepare for infrequent statements
             let mut stmt = self.conn.prepare(sql)?;
-            stmt.query_map(params, |row| Ok(row.clone()))?
-                .collect::<std::result::Result<Vec<_>, _>>()
-                .map_err(|e| LumosError::Sqlite(e.to_string()))?
+            let mut query_result = stmt.query(params)?;
+            let mut data = Vec::new();
+            while let Some(row) = query_result.next()? {
+                data.push(RowData::from_row(row)?);
+            }
+            data
         };
         
-        Ok(rows)
+        Ok(rows_data)
     }
     
     /// Begin a transaction
@@ -248,11 +292,11 @@ mod tests {
         let conn = pool.get().unwrap();
         
         // Execute a simple query
-        conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)", []).unwrap();
+        conn.execute("CREATE TABLE test (id INTEGER PRIMARY KEY, name TEXT)", &[]).unwrap();
         conn.execute("INSERT INTO test (name) VALUES (?)", &[&"test"]).unwrap();
         
         // Query
-        let rows = conn.query_all("SELECT * FROM test", []).unwrap();
+        let rows = conn.query_all("SELECT * FROM test", &[]).unwrap();
         assert_eq!(rows.len(), 1);
         
         // Connection is automatically returned to the pool when dropped
@@ -260,7 +304,7 @@ mod tests {
         
         // Get another connection and check the data is still there
         let conn = pool.get().unwrap();
-        let rows = conn.query_all("SELECT * FROM test", []).unwrap();
+        let rows = conn.query_all("SELECT * FROM test", &[]).unwrap();
         assert_eq!(rows.len(), 1);
     }
 }

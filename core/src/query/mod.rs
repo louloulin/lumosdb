@@ -8,7 +8,7 @@ use serde::{Serialize, Deserialize};
 use serde_json::Value as JsonValue;
 
 /// Types of SQL queries
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
 pub enum QueryType {
     /// SELECT query
     Select,
@@ -260,49 +260,45 @@ impl QueryExecutor {
         }
     }
 
-    /// Execute a query
-    pub fn execute(&self, query: Query) -> Result<QueryResult> {
-        // Parse the query to determine its type
+    /// Execute an SQL query and return the result
+    pub fn execute(&mut self, query: Query) -> Result<QueryResult> {
         let mut query = query;
+        
+        // Parse the query to determine the query type
         query.query_type = self.parser.parse_query_type(&query.sql)?;
         
-        // Determine the engine to use
-        let engine_type = if query.engine_type == EngineType::Auto {
+        // Use the router to determine the best engine
+        let engine = if query.engine_type == EngineType::Auto {
             self.router.route(&query)?
         } else {
             query.engine_type
         };
         
-        log::debug!(
-            "Executing {} query on {} engine: {}",
-            query.query_type, engine_type, query.sql
-        );
-        
-        // Execute the query on the appropriate engine
+        // Execute based on the selected engine
         let start_time = std::time::Instant::now();
-        let result = match engine_type {
-            EngineType::Sqlite => executor::execute_on_sqlite(&self.sqlite, &query)?,
-            EngineType::DuckDb => executor::execute_on_duckdb(&self.duckdb, &query)?,
+        
+        let result = match engine {
+            EngineType::Sqlite => {
+                executor::execute_on_sqlite(&self.sqlite, &query)?
+            },
+            EngineType::DuckDb => {
+                executor::execute_on_duckdb(&self.duckdb, &query)?
+            },
             EngineType::Auto => {
-                return Err(LumosError::Query(
-                    "Engine type should have been resolved by the router".to_string()
-                ));
+                // This shouldn't happen as we've already resolved it above
+                return Err(LumosError::Other("Auto engine type not resolved".to_string()));
             }
         };
         
-        let execution_time_ms = start_time.elapsed().as_millis() as u64;
-        
-        log::debug!(
-            "Query executed successfully in {}ms, affected {} rows, returned {} rows",
-            execution_time_ms, result.rows_affected, result.rows.len()
-        );
+        let end_time = std::time::Instant::now();
+        let execution_time = end_time.duration_since(start_time).as_millis() as u64;
         
         Ok(QueryResult {
             columns: result.columns,
             rows: result.rows,
             rows_affected: result.rows_affected,
-            engine_used: engine_type,
-            execution_time_ms,
+            engine_used: engine,
+            execution_time_ms: execution_time,
         })
     }
 

@@ -2,6 +2,7 @@ use duckdb::{Connection, ToSql};
 use crate::{LumosError, Result};
 use serde_json::Value as JsonValue;
 use std::collections::HashMap;
+use crate::duckdb::value_ref_to_json;
 
 /// Analytics engine built on top of DuckDB
 pub struct AnalyticsEngine<'a> {
@@ -42,10 +43,11 @@ impl<'a> AnalyticsEngine<'a> {
         let mut columns = Vec::with_capacity(column_count);
         
         for i in 0..column_count {
-            let column_name = stmt.column_name(i)
-                .map_err(|e| LumosError::DuckDb(format!("Failed to get column name: {}", e)))?
-                .unwrap_or_else(|| format!("Column_{}", i))
-                .to_string();
+            let column_name = match stmt.column_name(i)
+                .map_err(|e| LumosError::DuckDb(format!("Failed to get column name: {}", e))) {
+                    Ok(name) => name.to_string(),
+                    Err(_) => format!("Column_{}", i),
+                };
             
             columns.push(column_name);
         }
@@ -64,11 +66,7 @@ impl<'a> AnalyticsEngine<'a> {
             
             for i in 0..column_count {
                 let value = match row.get_ref(i) {
-                    Ok(duckdb::types::ValueRef::Null) => JsonValue::Null,
-                    Ok(duckdb::types::ValueRef::Integer(i)) => JsonValue::from(i),
-                    Ok(duckdb::types::ValueRef::Real(f)) => JsonValue::from(f),
-                    Ok(duckdb::types::ValueRef::Text(s)) => JsonValue::from(s),
-                    Ok(duckdb::types::ValueRef::Blob(_)) => JsonValue::from("<BLOB>"),
+                    Ok(value_ref) => value_ref_to_json(&value_ref),
                     Err(e) => {
                         log::warn!("Failed to get value: {}", e);
                         JsonValue::Null

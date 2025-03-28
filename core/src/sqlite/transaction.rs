@@ -1,5 +1,6 @@
 use rusqlite::Connection;
 use crate::{LumosError, Result};
+use crate::sqlite::connection::RowData;
 
 /// Represents a SQLite transaction
 pub struct Transaction<'a> {
@@ -55,16 +56,18 @@ impl<'a> Transaction<'a> {
     }
 
     /// Execute a query and return all rows
-    pub fn query_all(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<rusqlite::Row>> {
+    pub fn query_all(&self, sql: &str, params: &[&dyn rusqlite::ToSql]) -> Result<Vec<RowData>> {
         if self.finished {
             return Err(LumosError::Sqlite("Transaction already finished".to_string()));
         }
         
         let mut stmt = self.conn.prepare(sql)?;
-        let rows = stmt.query_map(params, |row| Ok(row.clone()))?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| LumosError::Sqlite(e.to_string()))?;
-        Ok(rows)
+        let mut query_result = stmt.query(params)?;
+        let mut rows_data = Vec::new();
+        while let Some(row) = query_result.next()? {
+            rows_data.push(RowData::from_row(row)?);
+        }
+        Ok(rows_data)
     }
 }
 

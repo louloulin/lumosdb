@@ -75,18 +75,14 @@ impl QueryParser {
         normalized_sql.contains("PARTITION BY")
     }
 
-    /// Check if a query is a write operation
-    pub fn is_write_query(&self, sql: &str) -> Result<bool> {
+    /// Parse SQL query to determine if it's a write query
+    pub fn is_write_query(&mut self, sql: &str) -> Result<bool> {
         let query_type = self.parse_query_type(sql)?;
         
-        Ok(matches!(query_type, 
-            QueryType::Insert | 
-            QueryType::Update | 
-            QueryType::Delete | 
-            QueryType::Create | 
-            QueryType::Alter | 
-            QueryType::Drop
-        ))
+        match query_type {
+            QueryType::Select => Ok(false),
+            _ => Ok(true),
+        }
     }
 
     /// Normalize SQL by removing comments and extra whitespace

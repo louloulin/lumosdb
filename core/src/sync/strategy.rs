@@ -3,6 +3,66 @@ use serde::{Serialize, Deserialize};
 use std::sync::Arc;
 use std::collections::HashMap;
 use crate::sync::schema::{SchemaManager, SchemaDifference};
+use std::time::{SystemTime, UNIX_EPOCH, Duration};
+
+/// A container for row data with owned values
+#[derive(Debug, Clone)]
+struct OwnedRow {
+    values: Vec<Option<rusqlite::types::Value>>,
+}
+
+impl OwnedRow {
+    /// Create a new OwnedRow from a SQLite row
+    fn from_row(row: &rusqlite::Row) -> Result<Self> {
+        let mut values = Vec::new();
+        
+        // Get column names and count from the statement
+        let stmt = row.as_ref();
+        let column_count = stmt.column_count();
+        
+        for i in 0..column_count {
+            let value = match row.get_ref(i) {
+                Ok(rusqlite::types::ValueRef::Null) => None,
+                Ok(rusqlite::types::ValueRef::Integer(i)) => Some(rusqlite::types::Value::Integer(i)),
+                Ok(rusqlite::types::ValueRef::Real(f)) => Some(rusqlite::types::Value::Real(f)),
+                Ok(rusqlite::types::ValueRef::Text(s)) => {
+                    let text = std::str::from_utf8(s).unwrap_or_default().to_string();
+                    Some(rusqlite::types::Value::Text(text))
+                },
+                Ok(rusqlite::types::ValueRef::Blob(b)) => {
+                    let blob = b.to_vec();
+                    Some(rusqlite::types::Value::Blob(blob))
+                },
+                Err(_) => None,
+            };
+            
+            values.push(value);
+        }
+        
+        Ok(Self { values })
+    }
+    
+    /// Get a reference to a value by index
+    fn get_ref(&self, idx: usize) -> Option<&rusqlite::types::Value> {
+        self.values.get(idx).and_then(|v| v.as_ref())
+    }
+    
+    /// Get the number of columns
+    fn column_count(&self) -> usize {
+        self.values.len()
+    }
+}
+
+// Helper functions for rusqlite::Value
+fn convert_value_to_duckdb_param(value: &rusqlite::types::Value) -> Box<dyn duckdb::ToSql> {
+    match value {
+        rusqlite::types::Value::Null => Box::new(Option::<String>::None),
+        rusqlite::types::Value::Integer(i) => Box::new(*i),
+        rusqlite::types::Value::Real(f) => Box::new(*f),
+        rusqlite::types::Value::Text(s) => Box::new(s.clone()),
+        rusqlite::types::Value::Blob(b) => Box::new(b.clone()),
+    }
+}
 
 /// Synchronization strategy for data between SQLite and DuckDB
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -107,6 +167,9 @@ impl StrategyExecutor {
         // Get column list
         let columns = self.get_column_list(config)?;
         
+        // Get SQLite connection
+        let sqlite_conn = self.sqlite.connection()?;
+        
         // Prepare SQLite query
         let sqlite_query = if let Some(transform_sql) = &config.transform_sql {
             transform_sql.clone()
@@ -115,33 +178,38 @@ impl StrategyExecutor {
         };
         
         // Get data from SQLite
-        let sqlite_conn = self.sqlite.connection()?;
-        let rows = sqlite_conn.prepare(&sqlite_query)?
-            .query_map([], |row| Ok(row.clone()))?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| LumosError::Sqlite(e.to_string()))?;
+        let mut stmt = sqlite_conn.prepare(&sqlite_query)?;
+        let rows_result = stmt.query_map([], |row| {
+            match OwnedRow::from_row(row) {
+                Ok(owned_row) => Ok(owned_row),
+                Err(_) => Err(rusqlite::Error::ExecuteReturnedResults),
+            }
+        })?;
+        
+        let mut rows = Vec::new();
+        for row_result in rows_result {
+            match row_result {
+                Ok(row) => rows.push(row),
+                Err(e) => return Err(LumosError::Sqlite(e.to_string())),
+            }
+        }
         
         if rows.is_empty() {
             log::debug!("No data to synchronize for table '{}'", config.table_name);
             return Ok(0);
         }
         
-        // Clear existing data in DuckDB
-        let duckdb_conn = self.duckdb.connection()?;
-        let delete_sql = format!("DELETE FROM {}", config.table_name);
+        log::debug!("Retrieved {} rows for table '{}'", rows.len(), config.table_name);
         
-        // Only try to delete if the table exists in DuckDB
+        // Ensure table exists in DuckDB
         let table_exists = self.duckdb.table_exists(&config.table_name)?;
-        if table_exists {
-            duckdb_conn.execute(&delete_sql, [])
-                .map_err(|e| LumosError::DuckDb(e.to_string()))?;
-        } else {
-            // Create table if it doesn't exist
+        if !table_exists {
+            log::debug!("Table '{}' doesn't exist in DuckDB, creating it", config.table_name);
             self.create_table_in_duckdb(config)?;
         }
         
         // Insert data into DuckDB
-        let row_count = self.insert_data_to_duckdb(config, &rows)?;
+        let row_count = self.insert_data_to_owned_rows(config, &rows)?;
         
         log::info!("Full sync completed for table '{}': {} rows synchronized", config.table_name, row_count);
         
@@ -200,10 +268,21 @@ impl StrategyExecutor {
         };
         
         // Get changed data from SQLite
-        let rows = sqlite_conn.prepare(&sqlite_query)?
-            .query_map([], |row| Ok(row.clone()))?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| LumosError::Sqlite(e.to_string()))?;
+        let mut stmt = sqlite_conn.prepare(&sqlite_query)?;
+        let rows_result = stmt.query_map([], |row| {
+            match OwnedRow::from_row(row) {
+                Ok(owned_row) => Ok(owned_row),
+                Err(_) => Err(rusqlite::Error::ExecuteReturnedResults),
+            }
+        })?;
+        
+        let mut rows = Vec::new();
+        for row_result in rows_result {
+            match row_result {
+                Ok(row) => rows.push(row),
+                Err(e) => return Err(LumosError::Sqlite(e.to_string())),
+            }
+        }
         
         if rows.is_empty() {
             log::debug!("No changes to synchronize for table '{}'", config.table_name);
@@ -240,10 +319,11 @@ impl StrategyExecutor {
             for pk in &pk_columns {
                 // Find the index of the primary key column
                 let idx = self.get_column_index(sqlite_conn, &config.table_name, pk)?;
-                if idx < row.as_ref().column_count() {
-                    let value = row.get_ref(idx)?;
-                    where_clauses.push(format!("{} = ?", pk));
-                    where_params.push(value);
+                if idx < row.values.len() {
+                    if let Some(value) = row.get_ref(idx) {
+                        where_clauses.push(format!("{} = ?", pk));
+                        where_params.push(value);
+                    }
                 }
             }
             
@@ -261,25 +341,7 @@ impl StrategyExecutor {
             // Convert where_params to a format suitable for DuckDB
             let mut duckdb_params = Vec::<Box<dyn duckdb::ToSql>>::new();
             for param in &where_params {
-                match param.data_type() {
-                    rusqlite::types::Type::Null => duckdb_params.push(Box::new(Option::<String>::None)),
-                    rusqlite::types::Type::Integer => {
-                        let v: i64 = param.as_i64().unwrap_or(0);
-                        duckdb_params.push(Box::new(v));
-                    },
-                    rusqlite::types::Type::Real => {
-                        let v: f64 = param.as_f64().unwrap_or(0.0);
-                        duckdb_params.push(Box::new(v));
-                    },
-                    rusqlite::types::Type::Text => {
-                        let v: String = param.as_str().unwrap_or("").to_string();
-                        duckdb_params.push(Box::new(v));
-                    },
-                    rusqlite::types::Type::Blob => {
-                        let v: Vec<u8> = param.as_blob().unwrap_or(&[]).to_vec();
-                        duckdb_params.push(Box::new(v));
-                    },
-                }
+                duckdb_params.push(convert_value_to_duckdb_param(param));
             }
             
             let duckdb_param_refs: Vec<&dyn duckdb::ToSql> = duckdb_params
@@ -302,26 +364,11 @@ impl StrategyExecutor {
                     
                     set_clauses.push(format!("{} = ?", col));
                     
-                    if i < row.as_ref().column_count() {
-                        let value = row.get_ref(i)?;
-                        match value.data_type() {
-                            rusqlite::types::Type::Null => set_params.push(Box::new(Option::<String>::None)),
-                            rusqlite::types::Type::Integer => {
-                                let v: i64 = value.as_i64().unwrap_or(0);
-                                set_params.push(Box::new(v));
-                            },
-                            rusqlite::types::Type::Real => {
-                                let v: f64 = value.as_f64().unwrap_or(0.0);
-                                set_params.push(Box::new(v));
-                            },
-                            rusqlite::types::Type::Text => {
-                                let v: String = value.as_str().unwrap_or("").to_string();
-                                set_params.push(Box::new(v));
-                            },
-                            rusqlite::types::Type::Blob => {
-                                let v: Vec<u8> = value.as_blob().unwrap_or(&[]).to_vec();
-                                set_params.push(Box::new(v));
-                            },
+                    if i < row.values.len() {
+                        if let Some(value) = row.get_ref(i) {
+                            set_params.push(convert_value_to_duckdb_param(value));
+                        } else {
+                            set_params.push(Box::new(Option::<String>::None));
                         }
                     }
                 }
@@ -339,25 +386,7 @@ impl StrategyExecutor {
                     
                     // Add where params
                     for param in &where_params {
-                        match param.data_type() {
-                            rusqlite::types::Type::Null => all_params.push(Box::new(Option::<String>::None)),
-                            rusqlite::types::Type::Integer => {
-                                let v: i64 = param.as_i64().unwrap_or(0);
-                                all_params.push(Box::new(v));
-                            },
-                            rusqlite::types::Type::Real => {
-                                let v: f64 = param.as_f64().unwrap_or(0.0);
-                                all_params.push(Box::new(v));
-                            },
-                            rusqlite::types::Type::Text => {
-                                let v: String = param.as_str().unwrap_or("").to_string();
-                                all_params.push(Box::new(v));
-                            },
-                            rusqlite::types::Type::Blob => {
-                                let v: Vec<u8> = param.as_blob().unwrap_or(&[]).to_vec();
-                                all_params.push(Box::new(v));
-                            },
-                        }
+                        all_params.push(convert_value_to_duckdb_param(param));
                     }
                     
                     let param_refs: Vec<&dyn duckdb::ToSql> = all_params
@@ -373,28 +402,13 @@ impl StrategyExecutor {
                 let mut values = Vec::new();
                 let mut insert_params = Vec::<Box<dyn duckdb::ToSql>>::new();
                 
-                for i in 0..row.as_ref().column_count() {
+                for i in 0..row.values.len() {
                     values.push("?".to_string());
                     
-                    let value = row.get_ref(i)?;
-                    match value.data_type() {
-                        rusqlite::types::Type::Null => insert_params.push(Box::new(Option::<String>::None)),
-                        rusqlite::types::Type::Integer => {
-                            let v: i64 = value.as_i64().unwrap_or(0);
-                            insert_params.push(Box::new(v));
-                        },
-                        rusqlite::types::Type::Real => {
-                            let v: f64 = value.as_f64().unwrap_or(0.0);
-                            insert_params.push(Box::new(v));
-                        },
-                        rusqlite::types::Type::Text => {
-                            let v: String = value.as_str().unwrap_or("").to_string();
-                            insert_params.push(Box::new(v));
-                        },
-                        rusqlite::types::Type::Blob => {
-                            let v: Vec<u8> = value.as_blob().unwrap_or(&[]).to_vec();
-                            insert_params.push(Box::new(v));
-                        },
+                    if let Some(value) = row.get_ref(i) {
+                        insert_params.push(convert_value_to_duckdb_param(value));
+                    } else {
+                        insert_params.push(Box::new(Option::<String>::None));
                     }
                 }
                 
@@ -433,10 +447,10 @@ impl StrategyExecutor {
     fn execute_snapshot_sync(&self, config: &TableSyncConfig) -> Result<usize> {
         log::debug!("Executing snapshot sync for table '{}'", config.table_name);
         
-        // Get snapshot name with timestamp
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_else(|_| std::time::Duration::from_secs(0))
+        // Create a unique name for the snapshot table
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::from_secs(0))
             .as_secs();
         
         let snapshot_table = format!("{}_{}", config.table_name, timestamp);
@@ -453,10 +467,21 @@ impl StrategyExecutor {
         
         // Get data from SQLite
         let sqlite_conn = self.sqlite.connection()?;
-        let rows = sqlite_conn.prepare(&sqlite_query)?
-            .query_map([], |row| Ok(row.clone()))?
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(|e| LumosError::Sqlite(e.to_string()))?;
+        let mut stmt = sqlite_conn.prepare(&sqlite_query)?;
+        let rows_result = stmt.query_map([], |row| {
+            match OwnedRow::from_row(row) {
+                Ok(owned_row) => Ok(owned_row),
+                Err(_) => Err(rusqlite::Error::ExecuteReturnedResults),
+            }
+        })?;
+        
+        let mut rows = Vec::new();
+        for row_result in rows_result {
+            match row_result {
+                Ok(row) => rows.push(row),
+                Err(e) => return Err(LumosError::Sqlite(e.to_string())),
+            }
+        }
         
         if rows.is_empty() {
             log::debug!("No data to snapshot for table '{}'", config.table_name);
@@ -469,7 +494,7 @@ impl StrategyExecutor {
         self.create_table_in_duckdb(&snapshot_config)?;
         
         // Insert data into DuckDB snapshot
-        let row_count = self.insert_data_to_duckdb(&snapshot_config, &rows)?;
+        let row_count = self.insert_data_to_owned_rows(&snapshot_config, &rows)?;
         
         log::info!("Snapshot sync completed for table '{}' as '{}': {} rows synchronized", 
             config.table_name, snapshot_table, row_count);
@@ -551,8 +576,8 @@ impl StrategyExecutor {
         Ok(())
     }
 
-    /// Insert data into DuckDB
-    fn insert_data_to_duckdb(&self, config: &TableSyncConfig, rows: &[rusqlite::Row]) -> Result<usize> {
+    /// Insert owned row data into DuckDB
+    fn insert_data_to_owned_rows(&self, config: &TableSyncConfig, rows: &[OwnedRow]) -> Result<usize> {
         if rows.is_empty() {
             return Ok(0);
         }
@@ -588,13 +613,17 @@ impl StrategyExecutor {
                 let mut values = Vec::new();
                 
                 for &idx in &column_indices {
-                    match row.get_ref(idx) {
-                        Ok(rusqlite::types::ValueRef::Null) => values.push("NULL".to_string()),
-                        Ok(rusqlite::types::ValueRef::Integer(i)) => values.push(i.to_string()),
-                        Ok(rusqlite::types::ValueRef::Real(f)) => values.push(f.to_string()),
-                        Ok(rusqlite::types::ValueRef::Text(s)) => values.push(format!("'{}'", std::str::from_utf8(s).unwrap_or_default().replace('\'', "''")),),
-                        Ok(rusqlite::types::ValueRef::Blob(b)) => values.push(format!("'{}'", hex::encode(b))),
-                        Err(_) => values.push("NULL".to_string()),
+                    if idx < row.values.len() {
+                        match row.get_ref(idx) {
+                            Some(rusqlite::types::Value::Null) => values.push("NULL".to_string()),
+                            Some(rusqlite::types::Value::Integer(i)) => values.push(i.to_string()),
+                            Some(rusqlite::types::Value::Real(f)) => values.push(f.to_string()),
+                            Some(rusqlite::types::Value::Text(s)) => values.push(format!("'{}'", s.replace('\'', "''"))),
+                            Some(rusqlite::types::Value::Blob(b)) => values.push(format!("'{}'", hex::encode(b))),
+                            None => values.push("NULL".to_string()),
+                        }
+                    } else {
+                        values.push("NULL".to_string());
                     }
                 }
                 
