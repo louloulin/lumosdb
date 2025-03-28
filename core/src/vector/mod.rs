@@ -9,6 +9,7 @@ use crate::duckdb::DuckDbEngine;
 use crate::LumosError;
 use crate::Result;
 use serde::{Serialize, Deserialize};
+use bincode;
 
 pub mod index;
 pub mod distance;
@@ -70,27 +71,25 @@ impl VectorStore {
         let conn = self.duckdb.connection()?;
         
         // Create the embeddings table if it doesn't exist
+        // Use a simpler schema to avoid arrow-related issues
         let create_table_sql = format!(
             "CREATE TABLE IF NOT EXISTS {} (
                 id VARCHAR PRIMARY KEY,
-                vector FLOAT[],
-                metadata JSON
+                vector_data BLOB,
+                metadata VARCHAR
             )",
             self.collection
         );
         
         conn.execute(&create_table_sql, [])?;
         
-        // Create a function-based index for fast vector similarity search
-        // This will be expanded with actual vector indexing in the index.rs module
+        // Create a simple index on the ID column
         let create_index_sql = format!(
-            "CREATE INDEX IF NOT EXISTS {0}_vector_idx ON {0} USING vector_index(vector)",
+            "CREATE INDEX IF NOT EXISTS {0}_id_idx ON {0} (id)",
             self.collection
         );
         
-        // We'll silently ignore index creation errors since 
-        // the vector_index may not be available until we implement it
-        let _ = conn.execute(&create_index_sql, []);
+        conn.execute(&create_index_sql, [])?;
         
         Ok(())
     }
@@ -106,25 +105,31 @@ impl VectorStore {
         
         let conn = self.duckdb.connection()?;
         
+        // Serialize the vector to a binary blob to avoid arrow dependency issues
+        let vector_blob = bincode::serialize(&embedding.vector)
+            .map_err(|e| LumosError::Other(format!("Failed to serialize vector: {}", e)))?;
+        
+        // Serialize metadata to JSON string
         let metadata_json = match &embedding.metadata {
-            Some(metadata) => serde_json::to_string(metadata)?,
+            Some(metadata) => serde_json::to_string(metadata)
+                .map_err(|e| LumosError::Other(format!("Failed to serialize metadata: {}", e)))?,
             None => "null".to_string(),
         };
         
-        // Convert vector to string representation for DuckDB
-        let vector_str = format!("[{}]", embedding.vector
-            .iter()
-            .map(|v| v.to_string())
-            .collect::<Vec<_>>()
-            .join(","));
-        
         let sql = format!(
-            "INSERT INTO {} (id, vector, metadata) VALUES (?, {}, ?::JSON)
-             ON CONFLICT (id) DO UPDATE SET vector = {}, metadata = ?::JSON",
-            self.collection, vector_str, vector_str
+            "INSERT INTO {} (id, vector_data, metadata) VALUES (?, ?, ?)
+             ON CONFLICT (id) DO UPDATE SET vector_data = ?, metadata = ?",
+            self.collection
         );
         
-        conn.execute(&sql, [&embedding.id as &dyn duckdb::ToSql, &metadata_json as &dyn duckdb::ToSql])?;
+        // We need to duplicate the blob parameter since it's used twice in the SQL
+        conn.execute(&sql, [
+            &embedding.id as &dyn duckdb::ToSql,
+            &vector_blob as &dyn duckdb::ToSql,
+            &metadata_json as &dyn duckdb::ToSql,
+            &vector_blob as &dyn duckdb::ToSql,
+            &metadata_json as &dyn duckdb::ToSql,
+        ])?;
         
         Ok(())
     }
@@ -146,25 +151,30 @@ impl VectorStore {
                 )));
             }
             
+            // Serialize the vector to a binary blob to avoid arrow dependency issues
+            let vector_blob = bincode::serialize(&embedding.vector)
+                .map_err(|e| LumosError::Other(format!("Failed to serialize vector: {}", e)))?;
+            
+            // Serialize metadata to JSON string
             let metadata_json = match &embedding.metadata {
-                Some(metadata) => serde_json::to_string(metadata)?,
+                Some(metadata) => serde_json::to_string(metadata)
+                    .map_err(|e| LumosError::Other(format!("Failed to serialize metadata: {}", e)))?,
                 None => "null".to_string(),
             };
             
-            // Convert vector to string representation for DuckDB
-            let vector_str = format!("[{}]", embedding.vector
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<_>>()
-                .join(","));
-            
             let sql = format!(
-                "INSERT INTO {} (id, vector, metadata) VALUES (?, {}, ?::JSON)
-                 ON CONFLICT (id) DO UPDATE SET vector = {}, metadata = ?::JSON",
-                self.collection, vector_str, vector_str
+                "INSERT INTO {} (id, vector_data, metadata) VALUES (?, ?, ?)
+                 ON CONFLICT (id) DO UPDATE SET vector_data = ?, metadata = ?",
+                self.collection
             );
             
-            tx.execute(&sql, [&embedding.id as &dyn duckdb::ToSql, &metadata_json as &dyn duckdb::ToSql])?;
+            tx.execute(&sql, [
+                &embedding.id as &dyn duckdb::ToSql,
+                &vector_blob as &dyn duckdb::ToSql,
+                &metadata_json as &dyn duckdb::ToSql,
+                &vector_blob as &dyn duckdb::ToSql,
+                &metadata_json as &dyn duckdb::ToSql,
+            ])?;
         }
         
         tx.commit()?;
@@ -176,7 +186,7 @@ impl VectorStore {
         let conn = self.duckdb.connection()?;
         
         let sql = format!(
-            "SELECT id, vector, metadata FROM {} WHERE id = ?",
+            "SELECT id, vector_data, metadata FROM {} WHERE id = ?",
             self.collection
         );
         
@@ -186,32 +196,23 @@ impl VectorStore {
         if let Some(row) = rows.next()? {
             let id: String = row.get(0)?;
             let vector_data: Vec<u8> = row.get(1)?;
-            let metadata_str: Option<String> = row.get(2)?;
+            let metadata_str: String = row.get(2)?;
             
-            // Parse the vector data from binary format
-            // This is simplified and will need to be adapted to actual DuckDB vector format
-            let vector = vector_data
-                .chunks(4)
-                .map(|chunk| {
-                    let arr = [chunk[0], chunk[1], chunk[2], chunk[3]];
-                    f32::from_le_bytes(arr)
-                })
-                .collect();
+            // Deserialize the vector from binary blob
+            let vector: Vec<f32> = bincode::deserialize(&vector_data)
+                .map_err(|e| LumosError::Other(format!("Failed to deserialize vector: {}", e)))?;
             
-            let metadata = if let Some(meta_str) = metadata_str {
-                if meta_str == "null" {
-                    None
-                } else {
-                    Some(serde_json::from_str(&meta_str)?)
-                }
-            } else {
+            let metadata = if metadata_str == "null" {
                 None
+            } else {
+                Some(serde_json::from_str(&metadata_str)
+                    .map_err(|e| LumosError::Other(format!("Failed to deserialize metadata: {}", e)))?)
             };
             
             Ok(Some(Embedding {
                 id,
                 vector,
-                dimension: self.dimension,
+                dimension: vector.len(),
                 metadata,
             }))
         } else {
@@ -223,16 +224,14 @@ impl VectorStore {
     pub fn delete(&self, id: &str) -> Result<bool> {
         let conn = self.duckdb.connection()?;
         
-        let sql = format!(
-            "DELETE FROM {} WHERE id = ?",
-            self.collection
-        );
+        let sql = format!("DELETE FROM {} WHERE id = ?", self.collection);
         
-        let count = conn.execute(&sql, [&id])?;
-        Ok(count > 0)
+        let changes = conn.execute(&sql, [&id])?;
+        
+        Ok(changes > 0)
     }
 
-    /// Find similar vectors using cosine similarity
+    /// Find similar vectors using a custom similarity calculation instead of relying on DuckDB features
     pub fn find_similar(&self, query_vector: &[f32], limit: usize) -> Result<Vec<(Embedding, f32)>> {
         if query_vector.len() != self.dimension {
             return Err(LumosError::InvalidArgument(format!(
@@ -241,67 +240,58 @@ impl VectorStore {
             )));
         }
         
+        // Get all embeddings from the store
         let conn = self.duckdb.connection()?;
         
-        // Convert query vector to string representation for DuckDB
-        let vector_str = format!("[{}]", query_vector
-            .iter()
-            .map(|v| v.to_string())
-            .collect::<Vec<_>>()
-            .join(","));
-        
-        // Use cosine similarity for similarity search
         let sql = format!(
-            "SELECT id, vector, metadata, cosine_similarity(vector, {}) AS similarity
-             FROM {}
-             ORDER BY similarity DESC
-             LIMIT {}",
-            vector_str, self.collection, limit
+            "SELECT id, vector_data, metadata FROM {}",
+            self.collection
         );
         
         let mut stmt = conn.prepare(&sql)?;
         let rows = stmt.query([])?;
         
+        // Calculate similarities for all embeddings
         let mut results = Vec::new();
         
-        for row_result in rows {
-            let row = row_result?;
+        for row_result in rows.mapped(|row| {
             let id: String = row.get(0)?;
             let vector_data: Vec<u8> = row.get(1)?;
-            let metadata_str: Option<String> = row.get(2)?;
-            let similarity: f32 = row.get(3)?;
+            let metadata_str: String = row.get(2)?;
             
-            // Parse the vector data from binary format
-            // This is simplified and will need to be adapted to actual DuckDB vector format
-            let vector = vector_data
-                .chunks(4)
-                .map(|chunk| {
-                    let arr = [chunk[0], chunk[1], chunk[2], chunk[3]];
-                    f32::from_le_bytes(arr)
-                })
-                .collect();
+            // Deserialize the vector
+            let vector: Vec<f32> = bincode::deserialize(&vector_data)
+                .map_err(|e| LumosError::Other(format!("Failed to deserialize vector: {}", e)))?;
             
-            let metadata = if let Some(meta_str) = metadata_str {
-                if meta_str == "null" {
-                    None
-                } else {
-                    Some(serde_json::from_str(&meta_str)?)
-                }
-            } else {
+            // Deserialize metadata
+            let metadata = if metadata_str == "null" {
                 None
+            } else {
+                Some(serde_json::from_str(&metadata_str)
+                    .map_err(|e| LumosError::Other(format!("Failed to deserialize metadata: {}", e)))?)
             };
             
             let embedding = Embedding {
                 id,
-                vector,
-                dimension: self.dimension,
+                vector: vector.clone(),
+                dimension: vector.len(),
                 metadata,
             };
             
-            results.push((embedding, similarity));
+            // Calculate cosine similarity
+            let similarity = super::distance::cosine_similarity(query_vector, &vector);
+            
+            Ok((embedding, similarity))
+        }) {
+            let result = result?;
+            results.push(result);
         }
         
-        Ok(results)
+        // Sort by similarity (higher is better)
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        
+        // Return top k results
+        Ok(results.into_iter().take(limit).collect())
     }
 
     /// Count the number of embeddings in the collection
@@ -322,23 +312,148 @@ impl VectorStore {
     }
 
     /// List all collections in the database
-    pub fn list_collections(duckdb: &Arc<DuckDbEngine>) -> Result<Vec<String>> {
+    pub static fn list_collections(duckdb: &Arc<DuckDbEngine>) -> Result<Vec<String>> {
         let conn = duckdb.connection()?;
         
-        let sql = "SELECT table_name FROM information_schema.tables 
-                  WHERE table_schema = 'main' AND table_type = 'BASE TABLE'";
+        let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'";
         
         let mut stmt = conn.prepare(sql)?;
         let rows = stmt.query([])?;
         
         let mut collections = Vec::new();
         
-        for row_result in rows {
-            let row = row_result?;
+        for row_result in rows.mapped(|row| {
             let name: String = row.get(0)?;
-            collections.push(name);
+            Ok(name)
+        }) {
+            let collection = row_result?;
+            collections.push(collection);
         }
         
         Ok(collections)
+    }
+    
+    /// Create an optimized index for the vector collection
+    pub fn create_index(&self, index_type: index::IndexType) -> Result<index::VectorIndex> {
+        // Retrieve all vectors from the store
+        let conn = self.duckdb.connection()?;
+        
+        let sql = format!(
+            "SELECT id, vector_data, metadata FROM {}",
+            self.collection
+        );
+        
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query([])?;
+        
+        // Create a new vector index
+        let mut vector_index = index::VectorIndex::new(
+            format!("{}_index", self.collection),
+            self.dimension,
+            index::IndexType::to_distance_metric(&index_type),
+        );
+        
+        // Add all vectors to the index
+        for row_result in rows.mapped(|row| {
+            let id: String = row.get(0)?;
+            let vector_data: Vec<u8> = row.get(1)?;
+            let metadata_str: String = row.get(2)?;
+            
+            // Deserialize the vector
+            let vector: Vec<f32> = bincode::deserialize(&vector_data)
+                .map_err(|e| LumosError::Other(format!("Failed to deserialize vector: {}", e)))?;
+            
+            // Deserialize metadata
+            let metadata = if metadata_str == "null" {
+                None
+            } else {
+                Some(serde_json::from_str(&metadata_str)
+                    .map_err(|e| LumosError::Other(format!("Failed to deserialize metadata: {}", e)))?)
+            };
+            
+            Ok((id, vector, metadata))
+        }) {
+            let (id, vector, metadata) = row_result?;
+            vector_index.add(id, vector, metadata)?;
+        }
+        
+        Ok(vector_index)
+    }
+    
+    /// Find similar vectors using an index for faster retrieval
+    pub fn find_similar_with_index(
+        &self, 
+        query_vector: &[f32], 
+        limit: usize,
+        index: &index::VectorIndex
+    ) -> Result<Vec<(Embedding, f32)>> {
+        if query_vector.len() != self.dimension {
+            return Err(LumosError::InvalidArgument(format!(
+                "Query vector dimension mismatch. Expected {}, got {}",
+                self.dimension, query_vector.len()
+            )));
+        }
+        
+        // Use the index to find similar vectors
+        let similar_ids = index.search(query_vector, limit)?;
+        
+        // Retrieve the full embeddings for the similar vectors
+        let mut results = Vec::new();
+        
+        for (id, similarity) in similar_ids {
+            if let Some(embedding) = self.get(&id)? {
+                results.push((embedding, similarity));
+            }
+        }
+        
+        // Results are already sorted by similarity
+        Ok(results)
+    }
+    
+    /// Export all embeddings to create a new index
+    pub fn export_embeddings(&self) -> Result<Vec<Embedding>> {
+        let conn = self.duckdb.connection()?;
+        
+        let sql = format!(
+            "SELECT id, vector_data, metadata FROM {}",
+            self.collection
+        );
+        
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query([])?;
+        
+        let mut embeddings = Vec::new();
+        
+        for row_result in rows.mapped(|row| {
+            let id: String = row.get(0)?;
+            let vector_data: Vec<u8> = row.get(1)?;
+            let metadata_str: String = row.get(2)?;
+            
+            // Deserialize the vector
+            let vector: Vec<f32> = bincode::deserialize(&vector_data)
+                .map_err(|e| LumosError::Other(format!("Failed to deserialize vector: {}", e)))?;
+            
+            // Deserialize metadata
+            let metadata = if metadata_str == "null" {
+                None
+            } else {
+                Some(serde_json::from_str(&metadata_str)
+                    .map_err(|e| LumosError::Other(format!("Failed to deserialize metadata: {}", e)))?)
+            };
+            
+            let embedding = Embedding {
+                id,
+                vector,
+                dimension: vector.len(),
+                metadata,
+            };
+            
+            Ok(embedding)
+        }) {
+            let embedding = row_result?;
+            embeddings.push(embedding);
+        }
+        
+        Ok(embeddings)
     }
 }

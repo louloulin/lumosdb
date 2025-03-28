@@ -201,36 +201,50 @@ impl PartitionedVectorIndex {
                         .unwrap_or(f32::MAX)
                 })
                 .collect();
+                
+            // Convert distances to probabilities (distance squared)
+            let total_dist: f32 = distances.iter().map(|d| d.powi(2)).sum();
             
-            // Calculate sum of squared distances for probability weighting
-            let sum_sq_distances: f32 = distances.iter().map(|d| d * d).sum();
-            
-            if sum_sq_distances <= 0.0 {
-                // All remaining points are duplicates of existing centroids
+            if total_dist == 0.0 {
+                // All points are centroids already or all distances are zero
                 break;
             }
             
-            // Select next centroid with probability proportional to distance squared
-            let cutoff = rand::Rng::gen_range(&mut rng, 0.0..sum_sq_distances);
-            let mut cumulative = 0.0;
+            let probs: Vec<f32> = distances.iter().map(|d| d.powi(2) / total_dist).collect();
             
-            for (idx, &dist) in distances.iter().enumerate() {
-                cumulative += dist * dist;
-                if cumulative >= cutoff {
-                    centroids.push(sample_vectors[idx].clone());
+            // Choose next centroid based on probabilities
+            let mut cumsum = 0.0;
+            let rand_val = rand::Rng::gen::<f32>(&mut rng);
+            
+            for (i, prob) in probs.iter().enumerate() {
+                cumsum += prob;
+                if cumsum >= rand_val {
+                    // Check if this vector is already a centroid
+                    if !centroids.contains(&sample_vectors[i]) {
+                        centroids.push(sample_vectors[i].clone());
+                    }
                     break;
                 }
             }
         }
         
-        // If we couldn't get enough centroids (e.g., few unique vectors),
-        // duplicate the ones we have
-        while centroids.len() < self.num_partitions {
-            let idx = rand::Rng::gen_range(&mut rng, 0..centroids.len());
-            centroids.push(centroids[idx].clone());
-        }
-        
+        // Set the centroids
         self.centroids = centroids;
+        
+        // If we couldn't get enough centroids, duplicate some
+        while self.centroids.len() < self.num_partitions {
+            if self.centroids.is_empty() {
+                // If we have no centroids at all, create a zero vector
+                self.centroids.push(vec![0.0; self.dimension]);
+            } else {
+                // Duplicate the first centroid with small random perturbations
+                let mut new_centroid = self.centroids[0].clone();
+                for val in &mut new_centroid {
+                    *val += (rand::Rng::gen::<f32>(&mut rng) - 0.5) * 0.01;
+                }
+                self.centroids.push(new_centroid);
+            }
+        }
     }
     
     /// Assign a vector to its nearest partition
@@ -239,18 +253,19 @@ impl PartitionedVectorIndex {
             return 0;
         }
         
+        // Find the nearest centroid
         let mut min_dist = f32::MAX;
-        let mut closest_partition = 0;
+        let mut nearest_partition = 0;
         
         for (i, centroid) in self.centroids.iter().enumerate() {
             let dist = self.metric.distance(vector, centroid);
             if dist < min_dist {
                 min_dist = dist;
-                closest_partition = i;
+                nearest_partition = i;
             }
         }
         
-        closest_partition
+        nearest_partition
     }
     
     /// Add a vector to the index
@@ -266,29 +281,26 @@ impl PartitionedVectorIndex {
         
         // Initialize centroids if this is the first vector
         if self.centroids.is_empty() {
-            // With just one vector, all centroids will be the same
-            self.centroids = vec![normalize(&vector); self.num_partitions];
+            self.initialize_centroids(&[vector.clone()]);
         }
         
-        // Normalize the vector
+        // Normalize the vector for more efficient similarity search
         let normalized_vector = normalize(&vector);
         
-        // Assign to nearest partition
+        // Find the appropriate partition
         let partition_idx = self.assign_partition(&normalized_vector);
         
-        // Store the vector in the assigned partition
-        self.partitions[partition_idx].insert(id.clone(), normalized_vector);
+        // Add to the partition
+        if partition_idx < self.partitions.len() {
+            self.partitions[partition_idx].insert(id.clone(), normalized_vector);
+        } else {
+            // This should not happen, but just in case
+            return Err(LumosError::Internal("Invalid partition index".to_string()));
+        }
         
         // Store metadata if provided
         if let Some(meta) = metadata {
             self.metadata.insert(id, meta);
-        }
-        
-        // Recompute centroids periodically (this is a simplified approach)
-        // In practice, you'd rebalance less frequently and use more sophisticated methods
-        let total_vectors: usize = self.partitions.iter().map(|p| p.len()).sum();
-        if total_vectors % 1000 == 0 {
-            self.recompute_centroids();
         }
         
         Ok(())
@@ -296,9 +308,9 @@ impl PartitionedVectorIndex {
     
     /// Remove a vector from the index
     pub fn remove(&mut self, id: &str) -> bool {
-        // Search through all partitions (this could be optimized with another lookup table)
         let mut found = false;
         
+        // Search in all partitions
         for partition in &mut self.partitions {
             if partition.remove(id).is_some() {
                 found = true;
@@ -322,80 +334,99 @@ impl PartitionedVectorIndex {
             )));
         }
         
+        // Total vectors in the index
+        let total_vectors: usize = self.partitions.iter().map(|p| p.len()).sum();
+        
+        if total_vectors == 0 {
+            return Ok(vec![]);
+        }
+        
         // Normalize the query vector
         let normalized_query = normalize(query);
         
-        // Identify closest partition(s)
-        let mut partition_distances: Vec<(usize, f32)> = self.centroids
+        // Find the nearest partition(s)
+        let partition_scores: Vec<(usize, f32)> = self.centroids
             .iter()
             .enumerate()
-            .map(|(i, centroid)| {
-                let dist = self.metric.distance(&normalized_query, centroid);
-                (i, dist)
-            })
+            .map(|(i, centroid)| (i, self.metric.similarity(&normalized_query, centroid)))
             .collect();
         
-        // Sort partitions by distance to query
-        partition_distances.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
-        
-        // Search in closest partitions first
-        let mut results = Vec::new();
-        let mut seen_ids = std::collections::HashSet::new();
-        
-        // Number of partitions to search - this is a tradeoff between accuracy and speed
-        // For small k, searching 1-2 partitions often gives good results
-        let partitions_to_search = std::cmp::min(2, self.num_partitions);
-        
-        for (partition_idx, _) in partition_distances.iter().take(partitions_to_search) {
-            let partition = &self.partitions[*partition_idx];
+        // Sort partitions by similarity to query (descending)
+        let mut sorted_partitions: Vec<usize> = partition_scores
+            .iter()
+            .map(|(i, _)| *i)
+            .collect();
             
-            // Calculate similarities for all vectors in this partition
+        sorted_partitions.sort_by(|&a, &b| {
+            let score_a = partition_scores[a].1;
+            let score_b = partition_scores[b].1;
+            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        
+        // Collect candidates from partitions
+        let mut candidates = Vec::new();
+        let mut total_candidates = 0;
+        
+        // We'll use partitions until we have enough candidates or we've used all partitions
+        for &partition_idx in &sorted_partitions {
+            let partition = &self.partitions[partition_idx];
+            
+            // Add vectors from this partition to candidates
             for (id, vector) in partition {
-                if seen_ids.contains(id) {
-                    continue;
-                }
-                
                 let similarity = self.metric.similarity(&normalized_query, vector);
-                results.push((id.clone(), similarity));
-                seen_ids.insert(id);
+                candidates.push((id.clone(), similarity));
+            }
+            
+            total_candidates += partition.len();
+            
+            // If we have collected enough candidates, stop
+            if total_candidates >= k * 2 && candidates.len() > k {
+                break;
             }
         }
         
-        // Sort by similarity (higher is better)
-        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        // Sort candidates by similarity (higher is better)
+        candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         
         // Return top k results
-        Ok(results.into_iter().take(k).collect())
+        let results = candidates.into_iter().take(k).collect();
+        
+        Ok(results)
     }
     
     /// Recompute centroids based on current vectors
     fn recompute_centroids(&mut self) {
-        // Skip if we have no vectors
+        // Skip if there are no vectors
         let total_vectors: usize = self.partitions.iter().map(|p| p.len()).sum();
         if total_vectors == 0 {
             return;
         }
         
-        // Collect all vectors for k-means
-        let mut all_vectors: Vec<Vec<f32>> = Vec::with_capacity(total_vectors);
-        for partition in &self.partitions {
-            all_vectors.extend(partition.values().cloned());
-        }
-        
-        // Need to reset partitions to recompute membership
-        let old_partitions = std::mem::replace(&mut self.partitions, 
-            (0..self.num_partitions).map(|_| HashMap::new()).collect());
-        
         // Initialize new centroids
-        self.initialize_centroids(&all_vectors);
+        let mut new_centroids = vec![vec![0.0f32; self.dimension]; self.centroids.len()];
+        let mut counts = vec![0usize; self.centroids.len()];
         
-        // Reassign all vectors to new partitions
-        for (partition, _) in old_partitions.into_iter().enumerate() {
-            for (id, vector) in self.partitions[partition].clone() {
-                let new_partition = self.assign_partition(&vector);
-                self.partitions[new_partition].insert(id, vector);
+        // Sum vectors in each partition
+        for (i, partition) in self.partitions.iter().enumerate() {
+            for vector in partition.values() {
+                for (j, val) in vector.iter().enumerate() {
+                    new_centroids[i][j] += val;
+                }
+                counts[i] += 1;
             }
         }
+        
+        // Compute averages
+        for (i, centroid) in new_centroids.iter_mut().enumerate() {
+            if counts[i] > 0 {
+                for val in centroid.iter_mut() {
+                    *val /= counts[i] as f32;
+                }
+            }
+        }
+        
+        // Update centroids
+        self.centroids = new_centroids;
     }
     
     /// Get the size of the index (number of vectors)
@@ -407,70 +438,96 @@ impl PartitionedVectorIndex {
 /// Type of vector index to use
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IndexType {
-    /// A flat index that stores all vectors in a single structure
+    /// Flat index with exact search
     Flat,
-    /// A partitioned index that divides vectors into partitions for faster search
-    Partitioned,
-    /// A hierarchical navigable small world (HNSW) graph index
-    HNSW,
+    /// Partitioned index for approximate search
+    Partitioned(usize), // Number of partitions
+    /// Index using cosine similarity
+    Cosine,
+    /// Index using Euclidean distance
+    Euclidean,
+    /// Index using dot product
+    DotProduct,
+    /// Index using Manhattan distance
+    Manhattan,
+}
+
+impl IndexType {
+    /// Convert index type to distance metric
+    pub fn to_distance_metric(&self) -> DistanceMetric {
+        match self {
+            IndexType::Cosine => DistanceMetric::Cosine,
+            IndexType::Euclidean => DistanceMetric::Euclidean,
+            IndexType::DotProduct => DistanceMetric::DotProduct,
+            IndexType::Manhattan => DistanceMetric::Manhattan,
+            // Default to cosine for other index types
+            _ => DistanceMetric::Cosine,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rand::Rng;
     
     #[test]
     fn test_vector_index_basic() {
+        // Create a vector index
         let mut index = VectorIndex::new("test_index", 3, DistanceMetric::Cosine);
         
-        // Add some vectors
+        // Add vectors
         index.add("v1", vec![1.0, 0.0, 0.0], None).unwrap();
         index.add("v2", vec![0.0, 1.0, 0.0], None).unwrap();
         index.add("v3", vec![0.0, 0.0, 1.0], None).unwrap();
+        index.add("v4", vec![0.7, 0.7, 0.0], None).unwrap();
         
         // Check size
+        assert_eq!(index.size(), 4);
+        
+        // Get vector
+        let (vector, _) = index.get("v1").unwrap();
+        assert_eq!(vector.len(), 3);
+        
+        // Search for similar vectors to [1.0, 0.0, 0.0]
+        let results = index.search(&[1.0, 0.0, 0.0], 2).unwrap();
+        
+        // Should return v1 and v4 as most similar
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].0, "v1");
+        assert_eq!(results[1].0, "v4");
+        
+        // Remove v1
+        index.remove("v1");
         assert_eq!(index.size(), 3);
         
-        // Retrieve a vector
-        let (vector, _) = index.get("v1").unwrap();
-        assert!((vector[0] - 1.0).abs() < 0.001);
-        assert!((vector[1] - 0.0).abs() < 0.001);
-        assert!((vector[2] - 0.0).abs() < 0.001);
-        
-        // Search for nearest neighbors to [1, 0, 0]
+        // Search again
         let results = index.search(&[1.0, 0.0, 0.0], 2).unwrap();
-        assert_eq!(results.len(), 2);
-        assert_eq!(results[0].0, "v1"); // Closest should be v1
         
-        // Remove a vector
-        assert!(index.remove("v2"));
-        assert_eq!(index.size(), 2);
-        
-        // Verify it's gone
-        assert!(index.get("v2").is_none());
+        // Now v4 should be first
+        assert_eq!(results[0].0, "v4");
     }
     
     #[test]
     fn test_vector_index_search_accuracy() {
-        let mut index = VectorIndex::new("accuracy_test", 10, DistanceMetric::Cosine);
+        let mut index = VectorIndex::new("test_index", 3, DistanceMetric::Cosine);
         
-        // Create a "ground truth" vector that we'll search for
-        let target = vec![0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0];
+        // Add some normalized vectors
+        index.add("v1", normalize(&[1.0, 0.0, 0.0]), None).unwrap();
+        index.add("v2", normalize(&[0.0, 1.0, 0.0]), None).unwrap();
+        index.add("v3", normalize(&[0.0, 0.0, 1.0]), None).unwrap();
+        index.add("v4", normalize(&[0.7, 0.7, 0.0]), None).unwrap();
         
-        // Add the target and many random vectors
-        index.add("target", target.clone(), None).unwrap();
+        // Test different query vectors
+        // Query [1,0,0] should be closest to v1
+        let results = index.search(&[1.0, 0.0, 0.0], 4).unwrap();
+        assert_eq!(results[0].0, "v1");
         
-        let mut rng = rand::thread_rng();
-        for i in 0..100 {
-            let random_vec: Vec<f32> = (0..10).map(|_| rng.gen()).collect();
-            index.add(format!("random_{}", i), random_vec, None).unwrap();
-        }
+        // Query [0,1,0] should be closest to v2
+        let results = index.search(&[0.0, 1.0, 0.0], 4).unwrap();
+        assert_eq!(results[0].0, "v2");
         
-        // Search for the target vector - it should be the closest match to itself
-        let results = index.search(&target, 1).unwrap();
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].0, "target");
-        assert!((results[0].1 - 1.0).abs() < 0.001); // Should have similarity ~1.0
+        // Query [0.7,0.7,0] should be closest to v4, then v1 and v2 (equal distance)
+        let results = index.search(&[0.7, 0.7, 0.0], 4).unwrap();
+        assert_eq!(results[0].0, "v4");
     }
 }

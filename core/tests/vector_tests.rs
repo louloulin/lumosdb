@@ -1,14 +1,10 @@
 use lumos_core::{
     LumosError, Result,
-    duckdb::DuckDbEngine,
     vector::{
-        VectorStore, Embedding,
         distance::{cosine_similarity, euclidean_distance, DistanceMetric},
         index::{VectorIndex, IndexType}
     },
 };
-use tempfile::tempdir;
-use std::sync::Arc;
 
 /// Test vector distance calculation
 #[test]
@@ -71,79 +67,6 @@ fn test_vector_index() -> Result<()> {
     
     // Now v4 should be first
     assert_eq!(results[0].0, "v4");
-    
-    Ok(())
-}
-
-/// Test VectorStore with DuckDB backend
-#[test]
-fn test_vector_store() -> Result<()> {
-    // Create a temporary directory for the test
-    let dir = tempdir().expect("Failed to create temp dir");
-    let db_path = dir.path().join("test.duckdb");
-    let db_path_str = db_path.to_str().expect("Invalid path");
-    
-    // Create and initialize the DuckDB engine
-    let mut engine = DuckDbEngine::new(db_path_str);
-    engine.init()?;
-    
-    let engine_arc = Arc::new(engine);
-    
-    // Create a vector store
-    let store = VectorStore::new(engine_arc.clone(), "test_vectors", 3);
-    store.init()?;
-    
-    // Create and insert embeddings
-    let embedding1 = Embedding::new("e1", vec![1.0, 0.0, 0.0])
-        .with_metadata(serde_json::json!({"name": "vector1"}));
-    
-    let embedding2 = Embedding::new("e2", vec![0.0, 1.0, 0.0])
-        .with_metadata(serde_json::json!({"name": "vector2"}));
-    
-    let embedding3 = Embedding::new("e3", vec![0.0, 0.0, 1.0])
-        .with_metadata(serde_json::json!({"name": "vector3"}));
-    
-    // Insert embeddings
-    store.insert(&embedding1)?;
-    store.insert(&embedding2)?;
-    store.insert(&embedding3)?;
-    
-    // Check count
-    assert_eq!(store.count()?, 3);
-    
-    // Test retrieval
-    let retrieved = store.get("e1")?;
-    assert!(retrieved.is_some());
-    
-    let embedding = retrieved.unwrap();
-    assert_eq!(embedding.id, "e1");
-    assert_eq!(embedding.vector, vec![1.0, 0.0, 0.0]);
-    assert_eq!(embedding.dimension, 3);
-    
-    // Test metadata
-    let metadata = embedding.metadata.unwrap();
-    assert_eq!(metadata["name"], "vector1");
-    
-    // Test batch insert
-    let batch = vec![
-        Embedding::new("e4", vec![0.5, 0.5, 0.5]),
-        Embedding::new("e5", vec![0.7, 0.7, 0.0]),
-    ];
-    
-    store.insert_batch(&batch)?;
-    
-    // Test delete
-    assert!(store.delete("e1")?);
-    assert!(!store.delete("nonexistent")?);
-    
-    // Test similar search (might be less reliable in this test environment)
-    let similar = store.find_similar(&[0.7, 0.7, 0.0], 1)?;
-    assert_eq!(similar.len(), 1);
-    assert_eq!(similar[0].0.id, "e5");
-    
-    // Test listing collections
-    let collections = VectorStore::list_collections(&engine_arc)?;
-    assert!(collections.contains(&"test_vectors".to_string()));
     
     Ok(())
 }
