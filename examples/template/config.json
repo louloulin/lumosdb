@@ -1,0 +1,5 @@
+{
+  "database_url": "localhost:8080",
+  "api_key": "your-api-key",
+  "debug": true
+} 
