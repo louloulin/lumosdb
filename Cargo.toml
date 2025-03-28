@@ -10,7 +10,9 @@ license = "MIT"
 [workspace]
 members = [
     "core",
+    "server"
 ]
+resolver = "2"
 
 # Define the binary target for the main CLI
 [[bin]]
@@ -25,12 +27,22 @@ path = "src/main.rs"
 lumos-core = { path = "./core" }
 
 # CLI and utilities
-clap = { version = "4.3.21", features = ["derive"] }
-log = "0.4.19"
-env_logger = "0.10.0"
+clap = { version = "4.4.13", features = ["derive"] }
+log = "0.4.20"
+env_logger = "0.10.1"
 serde = { version = "1.0.183", features = ["derive"] }
 serde_json = "1.0.105"
 tokio = { version = "1.29.1", features = ["full"] }
-anyhow = "1.0.75"
+anyhow = "1.0.79"
 
 # Keep existing configuration below 
+
+[build-dependencies]
+walkdir = "2.4.0"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[patch.crates-io] 
