@@ -1,0 +1,48 @@
+version: '1.0'
+name: "JDBC数据迁移作业"
+description: "从一个数据库提取数据并加载到另一个数据库"
+
+# 任务配置
+jobs:
+  extract_mysql_data:
+    type: "extractor"
+    extractor_type: "jdbc"
+    options:
+      connection_string: "mysql://user:password@localhost:3306/source_db"
+      query: "SELECT * FROM customers WHERE status = 'active'"
+      batch_size: 1000
+
+  transform_customer_data:
+    type: "transformer"
+    transformer_type: "json"
+    options:
+      transforms:
+        - operation: "rename_field"
+          from: "customer_id"
+          to: "id"
+        - operation: "add_field"
+          field: "data_source"
+          value: "mysql_migration"
+        - operation: "format_date"
+          field: "last_login"
+          format: "YYYY-MM-DD HH:mm:ss"
+
+  load_to_postgres:
+    type: "loader"
+    loader_type: "jdbc"
+    options:
+      connection_string: "postgresql://user:password@localhost:5432/target_db"
+      table_name: "migrated_customers"
+      load_mode: "upsert"
+      key_column: "id"
+      batch_size: 500
+
+# DAG配置
+dag:
+  dependencies:
+    transform_customer_data: ["extract_mysql_data"]
+    load_to_postgres: ["transform_customer_data"]
+  
+  failure_policy: "fail"
+  max_retries: 3
+  retry_delay_seconds: 60 

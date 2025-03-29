@@ -1,0 +1,120 @@
+version: "1.0"
+name: "示例ETL流程"
+description: "从CSV文件加载数据，进行转换后写入数据库"
+
+# DAG配置
+dag:
+  failure_policy: "fail"  # fail, continue, retry
+  dependencies:
+    extract_data: []
+    transform_data: ["extract_data"]
+    load_data: ["transform_data"]
+    notify_completion: ["load_data"]
+
+# 任务定义
+jobs:
+  # 数据提取任务
+  - id: "extract_data"
+    name: "从CSV文件提取数据"
+    description: "从CSV文件中读取原始数据"
+    timeout: 3600  # 超时时间（秒）
+    retry:
+      count: 3
+      delay: 60  # 初始延迟（秒）
+      backoff_factor: 2.0  # 退避因子
+      max_delay: 300  # 最大延迟（秒）
+    pipeline:
+      id: "extract_pipeline"
+      name: "数据提取管道"
+      extractor:
+        extractor_type: "csv"
+        options:
+          file_path: "/data/input/data.csv"
+          delimiter: ","
+          has_header: true
+      transformers: []
+      loader:
+        loader_type: "memory"
+        options: {}
+  
+  # 数据转换任务
+  - id: "transform_data"
+    name: "转换数据"
+    description: "清洗和转换从源系统提取的数据"
+    timeout: 1800
+    retry:
+      count: 2
+      delay: 30
+      backoff_factor: 1.5
+      max_delay: 120
+    pipeline:
+      id: "transform_pipeline"
+      name: "数据转换管道"
+      extractor:
+        extractor_type: "memory"
+        options: {}
+      transformers:
+        - transformer_type: "filter"
+          options:
+            condition: "value > 0"
+        - transformer_type: "map"
+          options:
+            mappings:
+              - source: "old_field"
+                target: "new_field"
+                transform: "value.to_uppercase()"
+      loader:
+        loader_type: "memory"
+        options: {}
+  
+  # 数据加载任务
+  - id: "load_data"
+    name: "加载数据"
+    description: "将转换后的数据加载到目标系统"
+    timeout: 3600
+    retry:
+      count: 5
+      delay: 60
+      backoff_factor: 2.0
+      max_delay: 600
+    pipeline:
+      id: "load_pipeline"
+      name: "数据加载管道"
+      extractor:
+        extractor_type: "memory"
+        options: {}
+      transformers: []
+      loader:
+        loader_type: "jdbc"
+        options:
+          connection_string: "jdbc:postgresql://localhost:5432/target_db"
+          table_name: "target_table"
+          batch_size: 1000
+          create_table: true
+  
+  # 通知任务
+  - id: "notify_completion"
+    name: "发送完成通知"
+    description: "ETL完成后发送通知"
+    timeout: 300
+    retry:
+      count: 3
+      delay: 30
+      backoff_factor: 1.5
+      max_delay: 120
+    pipeline:
+      id: "notification_pipeline"
+      name: "通知管道"
+      extractor:
+        extractor_type: "memory"
+        options: 
+          data_type: "summary"
+      transformers:
+        - transformer_type: "template"
+          options:
+            template: "ETL任务已完成，处理了{{records_count}}条记录"
+      loader:
+        loader_type: "email"
+        options:
+          recipients: ["admin@example.com"]
+          subject: "ETL任务完成通知" 
