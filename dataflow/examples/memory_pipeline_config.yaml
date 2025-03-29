@@ -1,0 +1,49 @@
+version: '1.0'
+name: "CSV到内存数据导入"
+description: "从CSV文件提取数据，转换后存储到内存中"
+
+# 任务配置
+jobs:
+  extract_products:
+    type: "extractor"
+    extractor_type: "csv"
+    options:
+      file_path: "./sample_data/products.csv"
+      has_header: true
+      delimiter: ","
+      encoding: "utf-8"
+
+  transform_products:
+    type: "transformer"
+    transformer_type: "json"
+    options:
+      transforms:
+        - operation: "rename_field"
+          from: "product_id"
+          to: "id"
+        - operation: "add_field"
+          field: "import_date"
+          value: "$NOW"
+        - operation: "format_field"
+          field: "price"
+          formatter: "currency"
+          options:
+            decimal_places: 2
+            prefix: "¥"
+
+  load_to_memory:
+    type: "loader"
+    loader_type: "memory"
+    options:
+      key: "products"
+      mode: "replace"
+
+# DAG配置
+dag:
+  dependencies:
+    transform_products: ["extract_products"]
+    load_to_memory: ["transform_products"]
+  
+  failure_policy: "fail"
+  max_retries: 2
+  retry_delay_seconds: 30 

@@ -5,6 +5,7 @@ pub mod extractors;
 pub mod loaders;
 pub mod transformers;
 pub mod types;
+pub mod plugin;
 
 // Re-export common types for easier usage
 pub use types::{DataRecord, ETLError};
@@ -28,4 +29,10 @@ pub use dag::DAGManager;
 pub use actors::dag_manager::DAGManagerActor;
 
 // 导出API相关
-pub use api::start_api_server; 
+pub use api::start_api_server;
+
+// 导出插件系统
+pub use plugin::{
+    Plugin, PluginMetadata, PluginType, PluginManager,
+    init_plugin_manager, with_plugin_manager
+}; 

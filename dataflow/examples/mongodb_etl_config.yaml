@@ -1,0 +1,53 @@
+version: '1.0'
+name: "MongoDB数据迁移示例"
+description: "从CSV文件提取数据，转换后加载到MongoDB数据库"
+
+# 任务配置
+jobs:
+  extract_from_csv:
+    type: "extractor"
+    extractor_type: "csv"
+    options:
+      file_path: "./sample_data/products.csv"
+      has_header: true
+      delimiter: ","
+      encoding: "utf-8"
+
+  transform_data:
+    type: "transformer"
+    transformer_type: "json"
+    options:
+      transforms:
+        - operation: "rename_field"
+          from: "product_id"
+          to: "_id"
+        - operation: "convert_field"
+          field: "price"
+          type: "float"
+        - operation: "convert_field"
+          field: "stock"
+          type: "int"
+        - operation: "add_field"
+          field: "import_date"
+          value: "$NOW"
+
+  load_to_mongodb:
+    type: "loader"
+    extractor_type: "mongodb"
+    options:
+      connection_string: "mongodb://localhost:27017"
+      database: "products_db"
+      collection: "products"
+      mode: "upsert"
+      key_field: "_id"
+      batch_size: 100
+
+# DAG配置
+dag:
+  dependencies:
+    transform_data: ["extract_from_csv"]
+    load_to_mongodb: ["transform_data"]
+  
+  failure_policy: "fail"
+  max_retries: 3
+  retry_delay_seconds: 60

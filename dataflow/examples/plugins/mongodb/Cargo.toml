@@ -1,0 +1,25 @@
+[package]
+name = "lumos-dataflow-plugin-mongodb"
+version = "0.1.0"
+edition = "2021"
+description = "MongoDB connector plugin for Lumos DataFlow"
+authors = ["Lumos DB Team <team@lumosdb.example.com>"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+lumos-dataflow = { path = "../../../", optional = true }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+log = "0.4"
+mongodb = "2.3"
+bson = "2.4"
+actix = "0.13"
+futures = "0.3"
+thiserror = "1.0"
+semver = "1.0"
+tokio = { version = "1.24", features = ["full"] }
+
+[dev-dependencies]
+lumos-dataflow = { path = "../../../" } 
