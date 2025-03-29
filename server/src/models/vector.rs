@@ -82,6 +82,9 @@ pub struct SearchResult {
     pub id: String,
     /// 相似度分数
     pub score: f32,
+    /// 向量数据（可选）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vector: Option<Vec<f32>>,
     /// 可选的元数据
     pub metadata: Option<HashMap<String, serde_json::Value>>,
 }

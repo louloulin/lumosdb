@@ -1,52 +1,32 @@
+use std::process;
+use env_logger::Env;
+use log::{info, error};
+
 mod api;
 mod db;
+mod middleware;
+mod models;
 mod utils;
 mod config;
-mod models;
-mod middleware;
 
-use actix_web::{web, App, HttpServer, middleware as actix_middleware};
-use actix_cors::Cors;
-use std::sync::Arc;
-use std::io;
-use std::env;
-use std::path::PathBuf;
-use tracing_actix_web::TracingLogger;
-use dotenv::dotenv;
-use env_logger;
-use log::{info, error};
-use tokio;
+use crate::config::ServerConfig;
 
-use db::executor::DbExecutor;
-use middleware::logger::Logger;
-use middleware::auth::Auth;
-use api::Server;
-
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 初始化环境变量
-    dotenv::dotenv().ok();
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    // 初始化日志系统
+    let config = ServerConfig::from_env();
+    let env = Env::default()
+        .filter_or("RUST_LOG", &config.log_level);
+    env_logger::init_from_env(env);
     
-    // 初始化日志
-    env_logger::init_from_env(env_logger::Env::default().default_filter_or("info"));
+    info!("Starting Lumos-DB Server");
     
-    // 创建应用配置
-    let config = config::AppConfig::default();
-    
-    // 创建和启动服务器
-    info!("Starting Lumos-DB server...");
-    match Server::new(config) {
-        Ok(server) => {
-            if let Err(e) = server.run().await {
-                error!("Server error: {}", e);
-                return Err(e.into());
-            }
-        },
-        Err(e) => {
-            error!("Failed to create server: {}", e);
-            return Err(e.into());
-        }
+    // 启动服务器
+    if let Err(e) = api::rest::run_server(config).await {
+        error!("Server error: {}", e);
+        process::exit(1);
     }
     
+    info!("Server shutdown complete");
     Ok(())
 }

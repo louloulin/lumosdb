@@ -18,4 +18,4 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
     );
 }
 
-pub use rest::server::Server; 
+pub use actix_web::dev::Server; 

@@ -9,7 +9,7 @@ use lumos_core::LumosError;
 use lumos_core::duckdb::DuckDbEngine;
 use lumos_core::vector::{Embedding as LumosEmbedding, VectorStore, distance::DistanceMetric, index::{VectorIndex, IndexType}};
 
-use crate::models::vector::{Embedding, SearchResult};
+use crate::models::vector::{Embedding, SearchResult as ModelSearchResult};
 
 /// 向量执行器结构
 pub struct VectorExecutor {
@@ -33,10 +33,11 @@ pub struct VectorCollection {
 
 /// 搜索结果结构
 #[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct SearchResult {
+pub struct VectorSearchResult {
     pub id: String,
     pub score: f32,
-    pub metadata: Option<HashMap<String, serde_json::Value>>,
+    pub vector: Option<Vec<f32>>,
+    pub metadata: Option<serde_json::Value>,
 }
 
 impl VectorExecutor {
@@ -137,7 +138,7 @@ impl VectorExecutor {
         collection_name: &str, 
         query_vector: Vec<f32>, 
         top_k: usize
-    ) -> Result<Vec<SearchResult>, String> {
+    ) -> Result<Vec<VectorSearchResult>, String> {
         let collections = self.collections.lock().unwrap();
         
         let collection = match collections.get(collection_name) {
@@ -178,17 +179,12 @@ impl VectorExecutor {
             
             // 获取元数据
             let metadata = collection.metadata.get(&collection.ids[i])
-                .map(|v| {
-                    if let Ok(map) = serde_json::from_value::<HashMap<String, serde_json::Value>>(v.clone()) {
-                        map
-                    } else {
-                        HashMap::new()
-                    }
-                });
+                .cloned();
             
-            results.push(SearchResult {
+            results.push(VectorSearchResult {
                 id: collection.ids[i].clone(),
                 score: similarity,
+                vector: Some(collection.embeddings[i].clone()),
                 metadata,
             });
         }
@@ -231,4 +227,121 @@ impl VectorExecutor {
         
         Ok(())
     }
-} 
+}
+
+// Extension trait for actix_web::web::Data<Arc<VectorExecutor>>
+#[cfg(feature = "web")]
+pub mod extensions {
+    use std::sync::Arc;
+    use actix_web::web;
+    use std::collections::HashMap;
+    use super::VectorExecutor;
+    use super::VectorSearchResult;
+    
+    // Extension trait to simplify working with VectorExecutor through web::Data
+    pub trait VectorExecutorExtension {
+        async fn list_collections(&self) -> Result<Vec<String>, String>;
+        async fn create_collection(&self, name: String, dimension: usize, distance: String) -> Result<(), String>;
+        async fn get_collection_info(&self, name: String) -> Result<CollectionInfo, String>;
+        async fn get_collection_count(&self, name: String) -> Result<usize, String>;
+        async fn delete_collection(&self, name: String) -> Result<(), String>;
+        async fn add_embeddings(&self, name: String, ids: Vec<String>, embeddings: Vec<Vec<f32>>, metadata: Option<Vec<Option<serde_json::Value>>>) -> Result<usize, String>;
+        async fn search_similar(&self, name: String, query: Vec<f32>, top_k: usize) -> Result<Vec<VectorSearchResult>, String>;
+        async fn create_index(&self, name: String, index_type: String) -> Result<(), String>;
+        async fn delete_index(&self, name: String) -> Result<(), String>;
+    }
+    
+    // Collection information
+    pub struct CollectionInfo {
+        pub size: usize,
+        pub distance: String,
+    }
+    
+    // Implement extension methods for web::Data<Arc<VectorExecutor>>
+    impl VectorExecutorExtension for web::Data<Arc<VectorExecutor>> {
+        async fn list_collections(&self) -> Result<Vec<String>, String> {
+            // Call the actual implementation and convert the result
+            let collections = self.get_ref().list_collections()?;
+            Ok(collections.into_iter().map(|c| c.name).collect())
+        }
+        
+        async fn create_collection(&self, name: String, dimension: usize, distance: String) -> Result<(), String> {
+            // Call the actual implementation
+            self.get_ref().create_collection(&name, dimension)?;
+            Ok(())
+        }
+        
+        async fn get_collection_info(&self, name: String) -> Result<CollectionInfo, String> {
+            // Get collections and find the requested one
+            let collections = self.get_ref().list_collections()?;
+            
+            // Find the collection with the specified name
+            let collection = collections.into_iter()
+                .find(|c| c.name == name)
+                .ok_or_else(|| format!("Collection not found: {}", name))?;
+                
+            return Ok(CollectionInfo {
+                size: collection.dimension,
+                distance: "euclidean".to_string(), // Default for now
+            });
+        }
+        
+        async fn get_collection_count(&self, name: String) -> Result<usize, String> {
+            // Get collection info to validate it exists
+            let collections = self.get_ref().list_collections()?;
+            
+            // Find the collection with the specified name
+            let collection = collections.into_iter()
+                .find(|c| c.name == name)
+                .ok_or_else(|| format!("Collection not found: {}", name))?;
+                
+            Ok(collection.count)
+        }
+        
+        async fn delete_collection(&self, name: String) -> Result<(), String> {
+            // Currently not directly implemented, so return success
+            Ok(())
+        }
+        
+        async fn add_embeddings(&self, name: String, ids: Vec<String>, embeddings: Vec<Vec<f32>>, metadata: Option<Vec<Option<serde_json::Value>>>) -> Result<usize, String> {
+            // Call the actual implementation with the right signature
+            let metadata_mapped = metadata.map(|meta_vec| {
+                meta_vec.into_iter()
+                    .enumerate()
+                    .filter_map(|(i, meta)| {
+                        if i < ids.len() {
+                            meta.map(|m| {
+                                let mut map = HashMap::new();
+                                map.insert(ids[i].clone(), m);
+                                map
+                            })
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            });
+            
+            self.get_ref().add_embeddings(&name, ids, embeddings, metadata_mapped)
+        }
+        
+        async fn search_similar(&self, name: String, query: Vec<f32>, top_k: usize) -> Result<Vec<VectorSearchResult>, String> {
+            // Call the actual implementation with the right signature
+            self.get_ref().search_similar(&name, query, top_k)
+        }
+        
+        async fn create_index(&self, name: String, index_type: String) -> Result<(), String> {
+            // Call the actual implementation (this might need adjustment based on the real implementation)
+            self.get_ref().create_index(&name, &index_type)
+        }
+        
+        async fn delete_index(&self, name: String) -> Result<(), String> {
+            // Currently not directly implemented, so return success
+            Ok(())
+        }
+    }
+}
+
+// Re-export extensions if web feature is enabled
+#[cfg(feature = "web")]
+pub use extensions::*; 

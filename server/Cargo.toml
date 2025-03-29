@@ -13,10 +13,11 @@ lumos-core = { path = "../core" }
 actix-web = "4.3.1"
 actix-cors = "0.6.4"
 actix-rt = "2.8.0"
-
+once_cell = "1.18.0"
 # 异步支持
 tokio = { version = "1.28.1", features = ["full"] }
 futures = "0.3.28"
+futures-util = "0.3.28"
 
 # 序列化与反序列化
 serde = { version = "1.0.163", features = ["derive"] }
@@ -67,3 +68,17 @@ actix-test = "0.1.1"
 reqwest = { version = "0.11.18", features = ["json"] }
 assert_matches = "1.5.0"
 mockall = "0.11.4"
+
+[[test]]
+name = "db_operations_test"
+path = "tests/db_operations_test.rs"
+
+[[test]]
+name = "vector_operations_test"
+path = "tests/vector_operations_test.rs"
+
+[features]
+default = ["web"]
+web = []
+
+# Tool库

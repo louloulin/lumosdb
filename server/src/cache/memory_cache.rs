@@ -14,8 +14,8 @@ struct CacheItem<V> {
 // 内存缓存实现
 pub struct MemoryCache<K, V> 
 where 
-    K: Eq + Hash + Clone,
-    V: Clone,
+    K: Eq + Hash + Clone + std::fmt::Debug + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     cache: Arc<RwLock<HashMap<K, CacheItem<V>>>>,
     ttl: Option<Duration>,
@@ -24,8 +24,8 @@ where
 
 impl<K, V> MemoryCache<K, V> 
 where 
-    K: Eq + Hash + Clone,
-    V: Clone,
+    K: Eq + Hash + Clone + std::fmt::Debug + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     // 创建新的内存缓存
     pub fn new() -> Self {

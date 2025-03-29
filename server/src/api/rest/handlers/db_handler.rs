@@ -1,105 +1,183 @@
 use std::sync::Arc;
-use actix_web::{web, HttpResponse, Responder};
+use actix_web::{web, HttpResponse, Responder, post, get, delete, put};
 use log::error;
+use serde::{Deserialize, Serialize};
+use once_cell::sync::Lazy;
+use crate::db::{DbExecutor, DbExecutorExtension};
+use crate::models::response::{ApiResponse, ApiError};
+use crate::utils::perf_monitor::PerfMonitor;
+use crate::models::db::{ColumnInfo as ModelColumnInfo};
 
-use crate::db::DbExecutor;
-use crate::models::response::ApiResponse;
-
-// 创建数据库
-pub async fn create_database(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<String>,
-) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+// 查询请求
+#[derive(Debug, Deserialize)]
+pub struct QueryRequest {
+    pub sql: String,
 }
 
-// 删除数据库
-pub async fn delete_database(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<String>,
-) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+// 执行SQL请求
+#[derive(Debug, Deserialize)]
+pub struct ExecuteRequest {
+    pub sql: String,
 }
 
-// 列出表格
-pub async fn list_tables(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<String>,
-) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+// 创建表请求
+#[derive(Debug, Deserialize)]
+pub struct CreateTableRequest {
+    pub sql: String, // CREATE TABLE SQL语句
 }
 
-// 创建表格
-pub async fn create_table(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<(String, String)>,
-) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+// 表信息响应
+#[derive(Debug, Serialize)]
+pub struct TableInfo {
+    pub name: String,
+    pub columns: Vec<ModelColumnInfo>,
 }
 
-// 删除表格
-pub async fn delete_table(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<(String, String)>,
-) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+// Use the model's ColumnInfo directly to avoid type conversion
+pub use crate::models::db::ColumnInfo;
+
+// 性能监控器
+static QUERY_MONITOR: Lazy<PerfMonitor> = Lazy::new(|| {
+    PerfMonitor::new("db_query")
+});
+
+static EXECUTE_MONITOR: Lazy<PerfMonitor> = Lazy::new(|| {
+    PerfMonitor::new("db_execute")
+});
+
+// 配置数据库处理程序路由
+pub fn configure(cfg: &mut web::ServiceConfig) {
+    cfg.service(
+        web::scope("/db")
+            .route("/query", web::post().to(query))
+            .route("/execute", web::post().to(execute_sql))
+            .route("/tables", web::get().to(get_tables))
+            .route("/tables/{table_name}", web::get().to(get_table_info))
+            .route("/tables", web::post().to(create_table))
+            .route("/tables/{table_name}", web::delete().to(drop_table))
+    );
 }
 
-// 插入行
-pub async fn insert_row(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<(String, String)>,
+async fn query(
+    db_executor: web::Data<Arc<DbExecutor>>,
+    query_req: web::Json<QueryRequest>,
 ) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+    // 启动性能监控
+    let _timer = QUERY_MONITOR.start();
+    
+    match db_executor.query(query_req.sql.clone()) {
+        Ok(rows) => {
+            HttpResponse::Ok().json(ApiResponse::success(rows))
+        },
+        Err(e) => {
+            log::error!("Database query error: {}", e);
+            HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                ApiError::new("DATABASE_QUERY_ERROR", &format!("Query failed: {}", e))
+            ))
+        }
+    }
 }
 
-// 查询行
-pub async fn query_rows(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<(String, String)>,
+async fn execute_sql(
+    db_executor: web::Data<Arc<DbExecutor>>,
+    execute_req: web::Json<ExecuteRequest>,
 ) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+    // 启动性能监控
+    let _timer = EXECUTE_MONITOR.start();
+    
+    match db_executor.execute_sql(execute_req.sql.clone()) {
+        Ok(affected_rows) => {
+            HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+                "affected_rows": affected_rows
+            })))
+        },
+        Err(e) => {
+            log::error!("Database execute error: {}", e);
+            HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                ApiError::new("DATABASE_EXECUTE_ERROR", &format!("Execute failed: {}", e))
+            ))
+        }
+    }
 }
 
-// 获取行
-pub async fn get_row(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<(String, String, String)>,
+async fn get_tables(
+    db_executor: web::Data<Arc<DbExecutor>>,
 ) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+    match db_executor.get_tables() {
+        Ok(tables) => {
+            HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+                "tables": tables
+            })))
+        },
+        Err(e) => {
+            log::error!("Error getting tables: {}", e);
+            HttpResponse::InternalServerError().json(ApiResponse::<()>::error(
+                ApiError::new("DATABASE_ERROR", &format!("Failed to get tables: {}", e))
+            ))
+        }
+    }
 }
 
-// 更新行
-pub async fn update_row(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<(String, String, String)>,
+async fn get_table_info(
+    db_executor: web::Data<Arc<DbExecutor>>,
+    path: web::Path<String>,
 ) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+    let table_name = path.into_inner();
+    
+    match db_executor.get_table_info(&table_name) {
+        Ok(columns) => {
+            let table_info = TableInfo {
+                name: table_name,
+                columns,
+            };
+            HttpResponse::Ok().json(ApiResponse::success(table_info))
+        },
+        Err(e) => {
+            log::error!("Error getting table info: {}", e);
+            HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                ApiError::new("TABLE_INFO_ERROR", &format!("Failed to get table info: {}", e))
+            ))
+        }
+    }
 }
 
-// 删除行
-pub async fn delete_row(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<(String, String, String)>,
+async fn create_table(
+    db_executor: web::Data<Arc<DbExecutor>>,
+    create_req: web::Json<CreateTableRequest>,
 ) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+    match db_executor.execute_sql(create_req.sql.clone()) {
+        Ok(_) => {
+            HttpResponse::Created().json(ApiResponse::success(serde_json::json!({
+                "message": "Table created successfully"
+            })))
+        },
+        Err(e) => {
+            log::error!("Error creating table: {}", e);
+            HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                ApiError::new("TABLE_CREATE_ERROR", &format!("Failed to create table: {}", e))
+            ))
+        }
+    }
 }
 
-// 执行查询
-pub async fn execute_query(
-    _executor: web::Data<Arc<DbExecutor>>,
-    _path: web::Path<String>,
+async fn drop_table(
+    db_executor: web::Data<Arc<DbExecutor>>,
+    path: web::Path<String>,
 ) -> impl Responder {
-    // 暂时返回未实现
-    HttpResponse::NotImplemented().json(ApiResponse::<()>::error("Not implemented yet"))
+    let table_name = path.into_inner();
+    let drop_sql = format!("DROP TABLE IF EXISTS {}", table_name);
+    
+    match db_executor.execute_sql(drop_sql) {
+        Ok(_) => {
+            HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
+                "message": format!("Table '{}' dropped successfully", table_name)
+            })))
+        },
+        Err(e) => {
+            log::error!("Error dropping table {}: {}", table_name, e);
+            HttpResponse::BadRequest().json(ApiResponse::<()>::error(
+                ApiError::new("TABLE_DROP_ERROR", &format!("Failed to drop table: {}", e))
+            ))
+        }
+    }
 }

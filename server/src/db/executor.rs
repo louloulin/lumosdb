@@ -6,7 +6,8 @@ use crate::models::db::{TableInfo, ColumnInfo};
 
 /// 数据库执行器，负责执行SQL语句和查询
 pub struct DbExecutor {
-    path: String,
+    /// 数据库文件路径
+    pub path: String,
     engine: Arc<Mutex<lumos_core::sqlite::SqliteEngine>>,
 }
 
@@ -84,5 +85,38 @@ impl DbExecutor {
         }
         
         Ok(columns)
+    }
+
+    /// 执行SQL查询并返回JSON结果（用于REST API）
+    pub fn query(&self, sql: &str) -> Result<Vec<serde_json::Value>, LumosError> {
+        let rows = self.execute_query(sql, &[])?;
+        
+        let mut result = Vec::new();
+        for row in rows {
+            let mut obj = serde_json::Map::new();
+            for (key, value) in &row.values {
+                obj.insert(key.clone(), serde_json::Value::String(value.clone()));
+            }
+            result.push(serde_json::Value::Object(obj));
+        }
+        
+        Ok(result)
+    }
+    
+    /// 执行SQL命令并返回受影响的行数（用于REST API）
+    pub fn execute_sql(&self, sql: &str) -> Result<usize, LumosError> {
+        self.execute(sql, &[])
+    }
+    
+    /// 获取所有表名（用于REST API）
+    pub fn get_tables(&self) -> Result<Vec<String>, LumosError> {
+        let tables = self.list_tables()?;
+        let names = tables.into_iter().map(|t| t.name).collect();
+        Ok(names)
+    }
+    
+    /// 获取表结构信息（用于REST API）
+    pub fn get_table_info(&self, table_name: &str) -> Result<Vec<ColumnInfo>, LumosError> {
+        self.get_table_schema(table_name)
     }
 } 

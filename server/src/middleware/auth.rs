@@ -6,11 +6,14 @@ use actix_web::{
     error::ErrorUnauthorized,
     http::header,
     Error,
+    HttpResponse,
 };
 use futures_util::future::LocalBoxFuture;
 use jsonwebtoken::{decode, DecodingKey, Validation, Algorithm};
 use serde::{Deserialize, Serialize};
 use log::debug;
+
+use crate::models::response::{ApiResponse, ApiError};
 
 // 定义JWT声明结构
 #[derive(Debug, Serialize, Deserialize)]
@@ -144,6 +147,123 @@ where
         // 未提供有效的认证信息
         Box::pin(async move {
             Err(ErrorUnauthorized("需要认证"))
+        })
+    }
+}
+
+/// API认证中间件
+pub struct AuthMiddleware {
+    api_key: Option<String>,
+}
+
+impl AuthMiddleware {
+    /// 创建新的认证中间件
+    pub fn new(api_key: Option<String>) -> Self {
+        Self { api_key }
+    }
+}
+
+impl<S, B> Transform<S, ServiceRequest> for AuthMiddleware
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    S::Future: 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<B>;
+    type Error = Error;
+    type Transform = AuthMiddlewareService<S>;
+    type InitError = ();
+    type Future = Ready<Result<Self::Transform, Self::InitError>>;
+
+    fn new_transform(&self, service: S) -> Self::Future {
+        ready(Ok(AuthMiddlewareService {
+            service,
+            api_key: self.api_key.clone(),
+        }))
+    }
+}
+
+pub struct AuthMiddlewareService<S> {
+    service: S,
+    api_key: Option<String>,
+}
+
+impl<S, B> Service<ServiceRequest> for AuthMiddlewareService<S>
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error> + 'static,
+    S::Future: 'static,
+    B: 'static,
+{
+    type Response = ServiceResponse<B>;
+    type Error = Error;
+    type Future = LocalBoxFuture<'static, Result<Self::Response, Self::Error>>;
+
+    forward_ready!(service);
+
+    fn call(&self, req: ServiceRequest) -> Self::Future {
+        // 如果未配置API密钥，则不进行认证检查
+        if self.api_key.is_none() {
+            let fut = self.service.call(req);
+            return Box::pin(async move {
+                let res = fut.await?;
+                Ok(res)
+            });
+        }
+
+        // 从请求头中获取API密钥
+        let api_key = self.api_key.as_ref().unwrap();
+        
+        // 检查Authorization头
+        if let Some(auth_header) = req.headers().get("Authorization") {
+            if let Ok(auth_str) = auth_header.to_str() {
+                // 验证Bearer令牌
+                if auth_str.starts_with("Bearer ") {
+                    let token = &auth_str[7..]; // 跳过"Bearer "前缀
+                    if token == api_key {
+                        debug!("API key authentication successful");
+                        let fut = self.service.call(req);
+                        return Box::pin(async move {
+                            let res = fut.await?;
+                            Ok(res)
+                        });
+                    }
+                }
+            }
+        }
+        
+        // 检查API Key请求头
+        if let Some(key_header) = req.headers().get("X-API-Key") {
+            if let Ok(key) = key_header.to_str() {
+                if key == api_key {
+                    debug!("API key authentication successful");
+                    let fut = self.service.call(req);
+                    return Box::pin(async move {
+                        let res = fut.await?;
+                        Ok(res)
+                    });
+                }
+            }
+        }
+        
+        // 检查URL查询参数中的API密钥
+        let query_string = req.query_string();
+        if query_string.contains(&format!("api_key={}", api_key)) {
+            debug!("API key authentication successful via query parameter");
+            let fut = self.service.call(req);
+            return Box::pin(async move {
+                let res = fut.await?;
+                Ok(res)
+            });
+        }
+
+        // 认证失败
+        debug!("API key authentication failed");
+        let error_response = HttpResponse::Unauthorized().json(
+            ApiResponse::<()>::error(ApiError::new("UNAUTHORIZED", "Invalid or missing API key"))
+        );
+        
+        Box::pin(async move {
+            Ok(req.into_response(error_response.into_body()))
         })
     }
 } 

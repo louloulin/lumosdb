@@ -26,13 +26,13 @@ pub struct ExecuteResponse {
     pub rows_affected: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TableInfo {
     pub name: String,
     pub rows: usize,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ColumnInfo {
     pub name: String,
     pub data_type: String,

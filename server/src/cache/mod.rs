@@ -8,10 +8,10 @@ pub use memory_cache::MemoryCache;
 pub use lru_cache::LruCache;
 
 /// 缓存特性，定义通用缓存操作
-pub trait Cache<K, V>
+pub trait Cache<K, V>: Send + Sync + 'static
 where
-    K: Eq + Hash + Clone,
-    V: Clone,
+    K: Eq + Hash + Clone + std::fmt::Debug + Send + Sync,
+    V: Clone + Send + Sync,
 {
     /// 从缓存中获取值
     fn get(&self, key: &K) -> Option<V>;
@@ -38,8 +38,8 @@ where
 /// 为MemoryCache实现Cache特性
 impl<K, V> Cache<K, V> for MemoryCache<K, V>
 where
-    K: Eq + Hash + Clone,
-    V: Clone,
+    K: Eq + Hash + Clone + std::fmt::Debug + Send + Sync,
+    V: Clone + Send + Sync,
 {
     fn get(&self, key: &K) -> Option<V> {
         self.get(key)
@@ -73,8 +73,8 @@ where
 /// 为LruCache实现Cache特性
 impl<K, V> Cache<K, V> for LruCache<K, V>
 where
-    K: Eq + Hash + Clone,
-    V: Clone,
+    K: Eq + Hash + Clone + std::fmt::Debug + Send + Sync,
+    V: Clone + Send + Sync,
 {
     fn get(&self, key: &K) -> Option<V> {
         self.get(key)
@@ -112,8 +112,8 @@ impl CacheFactory {
     /// 创建内存缓存
     pub fn create_memory_cache<K, V>(ttl: Option<Duration>, max_size: Option<usize>) -> Box<dyn Cache<K, V>>
     where
-        K: Eq + Hash + Clone + 'static,
-        V: Clone + 'static,
+        K: Eq + Hash + Clone + 'static + std::fmt::Debug + Send + Sync,
+        V: Clone + 'static + Send + Sync,
     {
         let mut cache = MemoryCache::new();
         
@@ -131,8 +131,8 @@ impl CacheFactory {
     /// 创建LRU缓存
     pub fn create_lru_cache<K, V>(capacity: usize, ttl: Option<Duration>) -> Box<dyn Cache<K, V>>
     where
-        K: Eq + Hash + Clone + 'static,
-        V: Clone + 'static,
+        K: Eq + Hash + Clone + 'static + std::fmt::Debug + Send + Sync,
+        V: Clone + 'static + Send + Sync,
     {
         let mut cache = LruCache::new(capacity);
         

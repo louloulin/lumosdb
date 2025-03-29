@@ -8,8 +8,8 @@ use std::collections::VecDeque;
 // LRU缓存实现
 pub struct LruCache<K, V>
 where
-    K: Eq + Hash + Clone,
-    V: Clone,
+    K: Eq + Hash + Clone + std::fmt::Debug + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     cache: Arc<RwLock<HashMap<K, V>>>,
     lru_queue: Arc<RwLock<VecDeque<K>>>,
@@ -20,8 +20,8 @@ where
 
 impl<K, V> LruCache<K, V>
 where
-    K: Eq + Hash + Clone,
-    V: Clone,
+    K: Eq + Hash + Clone + std::fmt::Debug + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     // 创建新的LRU缓存
     pub fn new(capacity: usize) -> Self {
