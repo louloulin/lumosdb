@@ -4,7 +4,38 @@ use serde::{Serialize, Deserialize};
 use wasmtime::{Engine, Module, Store, Linker};
 use wasmtime_wasi::{WasiCtx, sync::WasiCtxBuilder};
 use anyhow::{Result, anyhow};
-use log::{info, warn};
+use log::{info, warn, debug};
+use clap::Parser;
+
+// Command line arguments
+#[derive(Parser, Debug)]
+#[clap(author = "Lumos DB Team")]
+#[clap(about = "Test program for MongoDB WASM plugin")]
+struct Args {
+    /// Path to the MongoDB WASM plugin
+    #[clap(short, long, default_value = "../plugins/mongodb.wasm")]
+    plugin_path: String,
+    
+    /// MongoDB connection string
+    #[clap(short, long, default_value = "mongodb://localhost:27017")]
+    connection: String,
+    
+    /// MongoDB database name
+    #[clap(short, long, default_value = "test")]
+    database: String,
+    
+    /// MongoDB collection for extraction
+    #[clap(short, long, default_value = "test_collection")]
+    source_collection: String,
+    
+    /// MongoDB collection for loading
+    #[clap(long, default_value = "output_collection")]
+    target_collection: String,
+    
+    /// MongoDB query for extraction (JSON format)
+    #[clap(short, long, default_value = "{}")]
+    query: String,
+}
 
 // Simplified data structures just for testing
 #[derive(Debug, Serialize, Deserialize)]
@@ -110,6 +141,8 @@ fn main() -> Result<()> {
     let mut options = HashMap::new();
     options.insert("collection".to_string(), "test_collection".to_string());
     options.insert("query".to_string(), "{}".to_string());
+    options.insert("connection_string".to_string(), "mongodb://localhost:27017".to_string());
+    options.insert("database".to_string(), "test".to_string());
     
     let extractor_options = ExtractorOptions { options };
     
@@ -161,6 +194,8 @@ fn main() -> Result<()> {
     info!("Calling load function...");
     let mut load_options = HashMap::new();
     load_options.insert("collection".to_string(), "output_collection".to_string());
+    load_options.insert("connection_string".to_string(), "mongodb://localhost:27017".to_string());
+    load_options.insert("database".to_string(), "test".to_string());
     
     let loader_options = LoaderOptions { options: load_options };
     
@@ -169,11 +204,24 @@ fn main() -> Result<()> {
     
     match load.call(&mut store, (records_ptr, options_ptr)) {
         Ok(result_ptr) => {
-            let result: LoadResult = read_from_memory(&memory, &mut store, result_ptr)?;
-            info!("Load result: {:?}", result);
+            match read_from_memory::<LoadResult>(&memory, &mut store, result_ptr) {
+                Ok(LoadResult::Success(count)) => {
+                    info!("Load succeeded: inserted {} records", count);
+                },
+                Ok(LoadResult::Error(err_msg)) => {
+                    warn!("Load returned an error: {}", err_msg);
+                },
+                Err(e) => {
+                    warn!("Failed to parse load result: {}", e);
+                    // Try to read the raw data to help debug the parsing error
+                    let raw_data = read_raw_memory(&memory, &mut store, result_ptr);
+                    debug!("Raw result data (first 100 bytes): {:?}", 
+                           raw_data.iter().take(100).collect::<Vec<_>>());
+                }
+            }
         },
         Err(e) => {
-            warn!("Load function failed: {}", e);
+            warn!("Load function failed to execute: {}", e);
         }
     }
     
@@ -233,4 +281,28 @@ fn write_to_memory<T: Serialize>(
     memory.data_mut(&mut *store)[offset_usize..offset_usize + buffer.len()].copy_from_slice(&buffer);
     
     Ok(offset)
+}
+
+// Add new helper function for reading raw memory
+fn read_raw_memory(
+    memory: &wasmtime::Memory,
+    store: &mut Store<WasiCtx>,
+    ptr: i32
+) -> Vec<u8> {
+    // Read length (first 4 bytes)
+    let len_bytes = memory.data(&mut *store)[ptr as usize..ptr as usize + 4].to_vec();
+    let len = u32::from_le_bytes([len_bytes[0], len_bytes[1], len_bytes[2], len_bytes[3]]) as usize;
+    
+    // Read raw data
+    let data_offset = ptr as usize + 4;
+    let data_end = data_offset + len;
+    let mem_size = memory.data_size(&mut *store);
+    
+    if data_end > mem_size {
+        warn!("Memory access out of bounds: offset={}, len={}, memory_size={}", 
+              data_offset, len, mem_size);
+        return Vec::new();
+    }
+    
+    memory.data(&mut *store)[data_offset..data_offset + len].to_vec()
 }
