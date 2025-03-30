@@ -1,25 +1,92 @@
 [package]
-name = "lumos-dataflow-plugin-mongodb"
+name = "lumos-dataflow"
 version = "0.1.0"
 edition = "2021"
-description = "MongoDB插件示例 - Lumos DataFlow框架"
+description = "数据流处理和ETL功能模块，支持YAML配置和DAG依赖管理"
 
-[lib]
-name = "lumos_dataflow_plugin_mongodb"
-crate-type = ["cdylib"]
+# 示例二进制文件
+[[example]]
+name = "run_etl_job"
+path = "examples/run_etl_job.rs"
+
+[[example]]
+name = "run_memory_etl"
+path = "examples/run_memory_etl.rs"
+
+[[example]]
+name = "plugin_manager"
+path = "examples/plugin_manager.rs"
+
+[[example]]
+name = "test_plugins"
+path = "examples/test_plugins.rs"
+
+[[example]]
+name = "plugin_test"
+path = "examples/plugin_test.rs"
+
+[[example]]
+name = "simple_plugin_test"
+path = "examples/simple_plugin_test.rs"
+
+[[example]]
+name = "validate_wasm_plugin"
+path = "examples/validate_wasm_plugin.rs"
+
+[[example]]
+name = "wasm_plugin_manager"
+path = "examples/wasm_plugin_manager.rs"
+
+[[example]]
+name = "run_wasm_etl"
+path = "examples/run_wasm_etl.rs"
+
+[[example]]
+name = "memory_wasm_test"
+path = "examples/memory_wasm_test.rs"
+
+[[example]]
+name = "simple_wasm_test"
+path = "examples/simple_wasm_test.rs"
 
 [dependencies]
-actix = "0.13"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-log = "0.4"
-mongodb = "2.4"
-futures = "0.3"
-chrono = "0.4"
+actix = "0.13.0"
+actix-rt = "2.8.0"
+tokio = { version = "1.28.1", features = ["full"] }
+serde = { version = "1.0.160", features = ["derive"] }
+serde_json = "1.0.96"
+serde_yaml = "0.9.21"
+chrono = { version = "0.4.24", features = ["serde"] }
+uuid = { version = "1.3.1", features = ["v4", "serde"] }
+async-trait = "0.1.68"
+futures = "0.3.28"
+log = "0.4.17"
+simple_logger = "4.0"
+thiserror = "1.0.40"
+csv = "1.2.1"
+sqlx = { version = "0.7.1", features = ["runtime-tokio-native-tls", "sqlite", "postgres", "json", "chrono", 
+"uuid"], optional = true }
+regex = "1.8.1"
+strum = { version = "0.24", features = ["derive"] }
+strum_macros = "0.24"
+lazy_static = "1.4.0"
+libloading = "0.7"
+semver = "1.0"
+clap = "3.2"
+anyhow = "1.0.69"
 
-[dev-dependencies]
-env_logger = "0.10"
-tokio = { version = "1", features = ["full"] }
+# WebAssembly依赖
+wasmtime = "10.0.1"
+wasmtime-wasi = "10.0.1"
+wit-bindgen = "0.11.0"
 
-[workspace]
-members = ["."] 
+# 其他
+dirs = "4.0"
+env_logger = "0.10.0"
+
+[features]
+default = ["sql", "plugins"]
+sql = ["sqlx"]
+plugins = []
+
+[workspace] 

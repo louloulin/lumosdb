@@ -221,4 +221,91 @@ Lumos-DB设计用于与AI框架无缝集成，特别是：
 
 ## 许可证
 
-[MIT](LICENSE) 
+[MIT](LICENSE)
+
+# Lumos DataFlow
+
+Lumos DataFlow是一个轻量级数据流处理框架，专注于ETL(提取-转换-加载)任务。
+
+## WebAssembly插件系统
+
+### 构建和验证插件
+
+Lumos DataFlow现在支持基于WebAssembly的插件系统，提供更好的安全性、跨平台能力和性能。以下是使用和验证插件的步骤：
+
+1. **构建WebAssembly插件**:
+   
+   使用提供的构建脚本可以轻松将插件编译为WebAssembly格式：
+   ```bash
+   # 确保脚本有执行权限
+   chmod +x scripts/build_wasm_plugin.sh
+   
+   # 构建MongoDB插件示例
+   ./scripts/build_wasm_plugin.sh examples/plugins/mongodb
+   ```
+
+2. **验证WebAssembly插件**:
+   
+   构建后，插件会自动进行验证。你也可以手动验证插件：
+   ```bash
+   # 使用验证工具检查插件是否符合WIT接口规范
+   cargo run --example validate_wasm_plugin plugins/mongodb.wasm
+   ```
+
+3. **插件管理**:
+   
+   使用WebAssembly插件管理器查看和管理插件：
+   ```bash
+   # 列出所有已加载的插件
+   cargo run --example wasm_plugin_manager list
+   
+   # 验证插件
+   cargo run --example wasm_plugin_manager validate plugins/mongodb.wasm
+   
+   # 查看插件功能
+   cargo run --example wasm_plugin_manager capabilities plugins/mongodb.wasm
+   ```
+
+### 创建新的WebAssembly插件
+
+要创建自己的插件，可以参考MongoDB插件示例。插件需要实现以下核心函数：
+
+- `get_metadata()`: 返回插件元数据(名称、版本等)
+- `get_type()`: 指定插件类型(提取器、转换器、加载器或全部)
+- `init()`: 插件初始化逻辑
+- `shutdown()`: 插件关闭逻辑
+
+根据插件类型，还需要实现以下函数之一：
+
+- `extract()`: 从数据源提取数据(提取器)
+- `transform()`: 转换数据(转换器)
+- `load()`: 将数据加载到目标系统(加载器)
+
+参考WIT定义文件(`wit/lumos-plugin.wit`)了解完整接口规范。
+
+### 包含WebAssembly插件
+
+在配置文件中，可以直接通过插件名称引用已加载的插件：
+
+```yaml
+jobs:
+  - name: "extract-from-mongodb"
+    type: "extractor"
+    extractor_type: "mongodb"  # 指向mongodb插件
+    options:
+      connection_string: "mongodb://localhost:27017"
+      database: "mydatabase"
+      collection: "mycollection"
+    next: "transform-data"
+```
+
+## 架构
+
+Lumos DataFlow基于Actor模型构建，具有以下主要组件：
+
+- **配置系统**: 通过YAML配置文件定义数据流管道和任务
+- **提取器 (Extractors)**: 从各种数据源提取数据
+- **转换器 (Transformers)**: 转换和处理数据
+- **加载器 (Loaders)**: 将数据加载到目标系统
+- **管道 (Pipeline)**: 协调提取-转换-加载过程
+- **插件系统**: 支持通过动态库和WebAssembly扩展功能 
