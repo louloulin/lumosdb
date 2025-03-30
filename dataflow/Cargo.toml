@@ -29,12 +29,25 @@ path = "examples/plugin_test.rs"
 name = "simple_plugin_test"
 path = "examples/simple_plugin_test.rs"
 
+[[example]]
+name = "simple_wasm_test"
+path = "examples/simple_wasm_test.rs"
+required-features = ["plugins"]
+
+[[example]]
+name = "standalone_wasm_test"
+path = "examples/standalone_wasm_test.rs"
+
+[[example]]
+name = "minimal_wasm_test"
+path = "examples/minimal_wasm_test.rs"
+
 [dependencies]
 actix = "0.13.0"
 actix-rt = "2.8.0"
 tokio = { version = "1.28.1", features = ["full"] }
 serde = { version = "1.0.160", features = ["derive"] }
-serde_json = "1.0.96"
+serde_json = "1.0"
 serde_yaml = "0.9.21"
 chrono = { version = "0.4.24", features = ["serde"] }
 uuid = { version = "1.3.1", features = ["v4", "serde"] }
@@ -54,13 +67,11 @@ semver = "1.0"
 clap = "3.2"
 
 # WebAssembly依赖
-wasmtime = "12.0.1"
-wasmtime-wasi = "12.0.1"
-wit-bindgen-host-wasmtime-rust = "0.11.0"
+wasmtime = "19.0.0"
 
 # 其他
 dirs = "4.0"
-env_logger = "0.10.0"
+env_logger = "0.10"
 
 [features]
 default = ["sql", "plugins"]
@@ -68,3 +79,4 @@ sql = ["sqlx"]
 plugins = []
 
 [workspace]
+members = [ "wasm-mongodb-test","wasm-test"]

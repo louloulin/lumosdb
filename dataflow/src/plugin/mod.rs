@@ -14,6 +14,8 @@ use serde_json::Value;
 use actix::prelude::*;
 use lazy_static::lazy_static;
 use std::ffi::OsStr;
+use anyhow::{anyhow, Result};
+use wasmtime::*;
 
 use crate::types::DataRecord;
 use crate::actors::messages::{ExtractData, LoadData};
@@ -321,4 +323,57 @@ where
 pub mod cli;
 
 // 导出模块
-pub use self::cli::handle_plugin_command; 
+pub use self::cli::handle_plugin_command;
+
+// 基本的wasmtime加载器
+pub mod wasmtime_loader {
+    use anyhow::{anyhow, Result};
+    use log::{debug, info};
+    use std::path::Path;
+    use wasmtime::*;
+
+    /// 验证WebAssembly模块是否可用
+    pub fn validate_wasm<P: AsRef<Path>>(path: P) -> Result<bool> {
+        let path = path.as_ref();
+        if !path.exists() {
+            return Err(anyhow!("WebAssembly文件不存在: {:?}", path));
+        }
+
+        info!("验证WebAssembly模块: {:?}", path);
+        
+        // 创建引擎
+        let engine = Engine::default();
+        
+        // 编译模块
+        let module = Module::from_file(&engine, path)?;
+        
+        // 创建存储
+        let mut store = Store::new(&engine, ());
+        
+        // 创建链接器
+        let linker = Linker::new(&engine);
+        
+        // 实例化模块
+        let instance = linker.instantiate(&mut store, &module)?;
+        
+        debug!("WebAssembly模块加载成功");
+        
+        Ok(true)
+    }
+
+    /// 初始化WebAssembly插件系统
+    pub fn initialize_wasm_plugin_system<P: AsRef<Path>>(plugins_dir: P) -> Result<usize> {
+        let dir = plugins_dir.as_ref();
+        
+        if !dir.exists() {
+            std::fs::create_dir_all(dir)?;
+            info!("创建插件目录: {:?}", dir);
+        }
+        
+        info!("WebAssembly插件系统初始化成功");
+        Ok(0)
+    }
+}
+
+// 重新导出基本功能
+pub use wasmtime_loader::*; 

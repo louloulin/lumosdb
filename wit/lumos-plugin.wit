@@ -1,122 +1,117 @@
-// Lumos DataFlow 插件接口定义
+/// Lumos DataFlow插件系统的WIT定义
 package lumos:plugin;
 
-// 数据记录表示单个数据项
+/// 数据记录结构
 record data-record {
-    // JSON格式的数据
-    data: string,
+    /// 记录的唯一标识符
+    id: string,
+    /// 记录的来源
+    source: string,
+    /// 记录的时间戳
+    timestamp: string,
+    /// 字段映射
+    fields: map<string, string>,
 }
 
-// 提取器选项
+/// 提取器选项
 record extractor-options {
-    // 配置选项，键值对
-    options: list<tuple<string, string>>,
+    /// 提取操作的选项
+    options: map<string, string>,
 }
 
-// 加载器选项
+/// 加载器选项
 record loader-options {
-    // 配置选项，键值对
-    options: list<tuple<string, string>>, 
+    /// 加载操作的选项
+    options: map<string, string>,
 }
 
-// 插件元数据
+/// 插件元数据
 record plugin-metadata {
-    // 插件名称
+    /// 插件名称
     name: string,
-    // 版本号
+    /// 插件版本
     version: string,
-    // 描述信息
+    /// 插件描述
     description: string,
-    // 作者
-    author: string,
+    /// 插件类型
+    plugin-type: plugin-type,
 }
 
-// 插件类型
+/// 插件类型枚举
 enum plugin-type {
-    // 数据提取器
+    /// 提取器插件
     extractor,
-    // 数据转换器
+    /// 转换器插件
     transformer,
-    // 数据加载器
+    /// 加载器插件
     loader,
-    // 全功能插件
+    /// 全功能插件
     all,
 }
 
-// 提取结果 - 成功或错误
+/// 提取结果枚举
 variant extract-result {
-    // 成功提取的数据记录列表
+    /// 成功提取
     success(list<data-record>),
-    // 错误信息
+    /// 提取失败
     error(string),
 }
 
-// 加载结果 - 成功或错误
+/// 加载结果枚举
 variant load-result {
-    // 成功加载的记录数
+    /// 成功加载
     success(u32),
-    // 错误信息
+    /// 加载失败
     error(string),
 }
 
-// 核心插件接口
+/// 插件接口
 interface plugin {
-    // 获取插件元数据
+    /// 获取插件元数据
     get-metadata: func() -> plugin-metadata;
-    
-    // 获取插件类型
-    get-type: func() -> plugin-type;
-    
-    // 初始化插件
-    init: func() -> result<_, string>;
-    
-    // 关闭插件
-    shutdown: func() -> result<_, string>;
 }
 
-// 提取器接口
+/// 提取器接口
 interface extractor {
-    use plugin.{data-record, extractor-options, extract-result};
-    
-    // 从数据源提取数据
-    extract: func(options: extractor-options) -> extract-result;
+    /// 从数据源提取数据
+    extract: func(options: extractor-options) -> list<data-record>;
 }
 
-// 加载器接口
-interface loader {
-    use plugin.{data-record, loader-options, load-result};
-    
-    // 加载数据到目标
-    load: func(records: list<data-record>, options: loader-options) -> load-result;
-}
-
-// 转换器接口
+/// 转换器接口
 interface transformer {
-    use plugin.{data-record};
-    
-    // 转换数据记录
+    /// 转换数据记录
     transform: func(records: list<data-record>) -> list<data-record>;
 }
 
-// 主世界接口 - 宿主环境向插件暴露的功能
+/// 加载器接口
+interface loader {
+    /// 加载数据到目标
+    load: func(records: list<data-record>, options: loader-options) -> load-result;
+}
+
+/// 日志接口
+interface logger {
+    /// 记录调试信息
+    debug: func(message: string);
+    /// 记录信息
+    info: func(message: string);
+    /// 记录警告
+    warn: func(message: string);
+    /// 记录错误
+    error: func(message: string);
+}
+
+/// 插件系统的世界接口
 world plugin-world {
-    // 导出插件接口
+    /// 导出插件接口
     export plugin;
-    
-    // 可选导出接口 - 插件可以实现这些接口中的一个或多个
+    /// 导出提取器接口
     export extractor;
-    export loader;
+    /// 导出转换器接口
     export transformer;
-    
-    // 导入日志功能
-    import logging: interface {
-        // 记录调试日志
-        debug: func(message: string);
-        // 记录信息日志
-        info: func(message: string);
-        // 记录警告日志
-        warn: func(message: string);
-        // 记录错误日志
-        error: func(message: string);
-    }
+    /// 导出加载器接口
+    export loader;
+
+    /// 导入日志接口
+    import logger;
 } 

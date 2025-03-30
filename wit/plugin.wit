@@ -1,0 +1,109 @@
+/// Lumos DataFlow plugin system interface definitions
+package lumos:plugin;
+
+/// A data record structure
+record data-record {
+    /// Unique identifier for the record
+    id: string,
+    /// Source of the record
+    source: string,
+    /// Timestamp of the record
+    timestamp: string,
+    /// Record fields as key-value pairs
+    fields: map<string, string>,
+}
+
+/// Options for data extraction
+record extractor-options {
+    /// Extraction operation options
+    options: map<string, string>,
+}
+
+/// Options for data loading
+record loader-options {
+    /// Loading operation options
+    options: map<string, string>,
+}
+
+/// Plugin metadata
+record plugin-metadata {
+    /// Name of the plugin
+    name: string,
+    /// Version of the plugin
+    version: string,
+    /// Description of the plugin
+    description: string,
+    /// Type of the plugin
+    plugin-type: plugin-type,
+}
+
+/// Plugin types
+enum plugin-type {
+    /// Extractor plugin
+    extractor,
+    /// Transformer plugin
+    transformer,
+    /// Loader plugin
+    loader,
+    /// All-in-one plugin
+    all,
+}
+
+/// Result of a load operation
+variant load-result {
+    /// Successful load with number of records processed
+    success(u32),
+    /// Load error with error message
+    error(string),
+}
+
+/// Core plugin interface
+interface plugin {
+    /// Get plugin metadata
+    get-metadata: func() -> plugin-metadata;
+}
+
+/// Data extractor interface
+interface extractor {
+    /// Extract data from a source
+    extract: func(options: extractor-options) -> list<data-record>;
+}
+
+/// Data transformer interface
+interface transformer {
+    /// Transform data records
+    transform: func(records: list<data-record>) -> list<data-record>;
+}
+
+/// Data loader interface
+interface loader {
+    /// Load data records to a target
+    load: func(records: list<data-record>, options: loader-options) -> load-result;
+}
+
+/// Logger interface for plugins to use
+interface logger {
+    /// Log a debug message
+    debug: func(message: string);
+    /// Log an info message
+    info: func(message: string);
+    /// Log a warning message
+    warn: func(message: string);
+    /// Log an error message
+    error: func(message: string);
+}
+
+/// The plugin system world
+world plugin-world {
+    /// Export plugin interface
+    export plugin;
+    /// Export extractor interface
+    export extractor;
+    /// Export transformer interface
+    export transformer;
+    /// Export loader interface
+    export loader;
+
+    /// Import logger interface
+    import logger;
+} 
