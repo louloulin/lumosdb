@@ -89,4 +89,5 @@ default = ["sql", "plugins"]
 sql = ["sqlx"]
 plugins = []
 
-[workspace] 
+[workspace]
+exclude = ["examples/plugins/postgresql"] 

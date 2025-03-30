@@ -79,4 +79,4 @@ sql = ["sqlx"]
 plugins = []
 
 [workspace]
-members = [ "wasm-mongodb-test","wasm-test"]
+members = [ "wasm-mongodb-test", "wasm-test", "wasm-postgresql-test"]
