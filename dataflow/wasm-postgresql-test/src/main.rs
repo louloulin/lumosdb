@@ -1,11 +1,17 @@
 use std::path::Path;
 use std::collections::HashMap;
+use std::fs::File;
+use std::io::Write;
+use std::time::Instant;
 use serde::{Serialize, Deserialize};
 use wasmtime::{Engine, Module, Store, Linker, Memory};
 use wasmtime_wasi::{WasiCtx, sync::WasiCtxBuilder};
 use anyhow::{Result, anyhow};
 use log::{info, warn};
 use clap::Parser;
+use chrono::Local;
+use uuid::Uuid;
+use indicatif::{ProgressBar, ProgressStyle};
 
 // Command line arguments
 #[derive(Parser, Debug)]
@@ -47,10 +53,26 @@ struct Args {
     /// Skip (don't run) loading operation
     #[arg(long)]
     skip_load: bool,
+    
+    /// Save test results to JSON file
+    #[arg(long)]
+    save_results: bool,
+    
+    /// Output path for test results
+    #[arg(long, default_value = "./test_results")]
+    output_path: String,
+    
+    /// Number of iterations for benchmarking
+    #[arg(long, default_value = "1")]
+    iterations: usize,
+    
+    /// Run in benchmark mode (focus on performance)
+    #[arg(long)]
+    benchmark: bool,
 }
 
 // Simplified data structures just for testing
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct DataRecord {
     pub id: String,
     pub source: String,
@@ -68,7 +90,7 @@ struct LoaderOptions {
     pub options: HashMap<String, String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 struct PluginMetadata {
     pub name: String,
     pub version: String,
@@ -82,6 +104,32 @@ enum LoadResult {
     Error(String),
 }
 
+// Struct to hold timing information
+#[derive(Debug, Serialize, Deserialize)]
+struct BenchmarkResult {
+    extract_time_ms: Vec<u64>,
+    transform_time_ms: Vec<u64>,
+    load_time_ms: Vec<u64>,
+    total_time_ms: u64,
+    record_count: usize,
+    plugin_metadata: PluginMetadata,
+    timestamp: String,
+    test_id: String,
+}
+
+// Struct to hold complete test results
+#[derive(Debug, Serialize, Deserialize)]
+struct TestResult {
+    plugin_metadata: PluginMetadata,
+    sample_records: Vec<DataRecord>,
+    transformed_records: Vec<DataRecord>,
+    performance: BenchmarkResult,
+    error: Option<String>,
+    success: bool,
+    timestamp: String,
+    test_id: String,
+}
+
 fn main() -> Result<()> {
     // Parse command line arguments
     let args = Args::parse();
@@ -90,6 +138,10 @@ fn main() -> Result<()> {
     env_logger::init();
     
     info!("Starting WASM PostgreSQL Plugin test");
+    
+    // Generate test ID
+    let test_id = Uuid::new_v4().to_string();
+    let timestamp = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
     
     // Check if PostgreSQL WebAssembly plugin exists
     let plugin_path = Path::new(&args.plugin_path);
@@ -152,102 +204,268 @@ fn main() -> Result<()> {
         });
     }
     
-    // Prepare extraction options
-    let mut options = HashMap::new();
-    options.insert("table".to_string(), args.source_table.clone());
-    options.insert("query".to_string(), args.query.clone());
-    options.insert("connection_string".to_string(), args.connection.clone());
-    options.insert("database".to_string(), args.database.clone());
+    // Prepare for benchmarking
+    let mut extract_times = Vec::with_capacity(args.iterations);
+    let mut transform_times = Vec::with_capacity(args.iterations);
+    let mut load_times = Vec::with_capacity(args.iterations);
+    let total_start = Instant::now();
+    let mut records = Vec::new();
+    let mut transformed_records = Vec::new();
+    let mut error_message = None;
+    let mut success = true;
     
-    let extractor_options = ExtractorOptions { options };
-    
-    // Test extract function
-    let records = if !args.skip_extract {
-        info!("Calling extract function...");
-        let options_ptr = write_to_memory(&memory, &mut store, &extractor_options)?;
-        
-        match extract.call(&mut store, options_ptr) {
-            Ok(result_ptr) => {
-                let extracted_records: Vec<DataRecord> = read_from_memory(&memory, &store, result_ptr)?;
-                info!("Extracted {} records", extracted_records.len());
-                
-                if extracted_records.is_empty() {
-                    info!("No records extracted, using sample data");
-                    sample_records
-                } else {
-                    extracted_records
-                }
-            },
-            Err(e) => {
-                warn!("Extract function failed: {}", e);
-                info!("Using sample data instead");
-                sample_records
-            }
-        }
+    // Setup progress bar for benchmark mode
+    let progress_bar = if args.benchmark {
+        let pb = ProgressBar::new(args.iterations as u64);
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("[{elapsed_precise}] {bar:40.cyan/blue} {pos}/{len} iterations {msg}")
+                .unwrap()
+                .progress_chars("##-")
+        );
+        Some(pb)
     } else {
-        info!("Skipping extract operation");
-        sample_records
+        None
     };
     
-    if !records.is_empty() {
-        info!("Sample record: id={}, fields={}", records[0].id, records[0].fields.len());
+    // Run iterations for benchmarking
+    for iteration in 0..args.iterations {
+        if let Some(pb) = &progress_bar {
+            pb.set_message(format!("Running iteration {}", iteration + 1));
+        }
+        
+        // Prepare extraction options
+        let mut options = HashMap::new();
+        options.insert("table".to_string(), args.source_table.clone());
+        options.insert("query".to_string(), args.query.clone());
+        options.insert("connection_string".to_string(), args.connection.clone());
+        options.insert("database".to_string(), args.database.clone());
+        
+        let extractor_options = ExtractorOptions { options };
+        
+        // Test extract function
+        if !args.skip_extract {
+            if !args.benchmark {
+                info!("Calling extract function...");
+            }
+            let extract_start = Instant::now();
+            let options_ptr = write_to_memory(&memory, &mut store, &extractor_options)?;
+            
+            match extract.call(&mut store, options_ptr) {
+                Ok(result_ptr) => {
+                    let extracted_records: Vec<DataRecord> = read_from_memory(&memory, &store, result_ptr)?;
+                    let extract_time = extract_start.elapsed();
+                    extract_times.push(extract_time.as_millis() as u64);
+                    
+                    if !args.benchmark {
+                        info!("Extracted {} records in {:?}", extracted_records.len(), extract_time);
+                    }
+                    
+                    if extracted_records.is_empty() {
+                        if !args.benchmark {
+                            info!("No records extracted, using sample data");
+                        }
+                        records = sample_records.clone();
+                    } else {
+                        records = extracted_records;
+                    }
+                },
+                Err(e) => {
+                    let extract_time = extract_start.elapsed();
+                    extract_times.push(extract_time.as_millis() as u64);
+                    warn!("Extract function failed: {}", e);
+                    error_message = Some(format!("Extract error: {}", e));
+                    success = false;
+                    if !args.benchmark {
+                        info!("Using sample data instead");
+                    }
+                    records = sample_records.clone();
+                }
+            }
+        } else {
+            if !args.benchmark {
+                info!("Skipping extract operation");
+            }
+            records = sample_records.clone();
+            extract_times.push(0);
+        }
+        
+        if !args.benchmark && !records.is_empty() {
+            info!("Sample record: id={}, fields={}", records[0].id, records[0].fields.len());
+        }
+        
+        // Test transform function
+        if !args.skip_transform {
+            if !args.benchmark {
+                info!("Calling transform function...");
+            }
+            let transform_start = Instant::now();
+            let records_ptr = write_to_memory(&memory, &mut store, &records)?;
+            
+            match transform.call(&mut store, records_ptr) {
+                Ok(transformed_ptr) => {
+                    let result: Vec<DataRecord> = read_from_memory(&memory, &store, transformed_ptr)?;
+                    let transform_time = transform_start.elapsed();
+                    transform_times.push(transform_time.as_millis() as u64);
+                    
+                    if !args.benchmark {
+                        info!("Transformed {} records in {:?}", result.len(), transform_time);
+                    }
+                    transformed_records = result;
+                },
+                Err(e) => {
+                    let transform_time = transform_start.elapsed();
+                    transform_times.push(transform_time.as_millis() as u64);
+                    warn!("Transform function failed: {}", e);
+                    error_message = Some(format!("Transform error: {}", e));
+                    success = false;
+                    if !args.benchmark {
+                        info!("Using original records");
+                    }
+                    transformed_records = records.clone();
+                }
+            }
+        } else {
+            if !args.benchmark {
+                info!("Skipping transform operation");
+            }
+            transformed_records = records.clone();
+            transform_times.push(0);
+        }
+        
+        // Test load function
+        if !args.skip_load {
+            if !args.benchmark {
+                info!("Calling load function...");
+            }
+            let mut load_options = HashMap::new();
+            load_options.insert("table".to_string(), args.target_table.clone());
+            load_options.insert("connection_string".to_string(), args.connection.clone());
+            load_options.insert("database".to_string(), args.database.clone());
+            
+            let loader_options = LoaderOptions { options: load_options };
+            
+            let records_ptr = write_to_memory(&memory, &mut store, &transformed_records)?;
+            let options_ptr = write_to_memory(&memory, &mut store, &loader_options)?;
+            
+            let load_start = Instant::now();
+            match load.call(&mut store, (records_ptr, options_ptr)) {
+                Ok(result_ptr) => {
+                    let load_time = load_start.elapsed();
+                    load_times.push(load_time.as_millis() as u64);
+                    
+                    match read_from_memory::<LoadResult>(&memory, &store, result_ptr) {
+                        Ok(LoadResult::Success(count)) => {
+                            if !args.benchmark {
+                                info!("Load succeeded: inserted {} records in {:?}", count, load_time);
+                            }
+                        },
+                        Ok(LoadResult::Error(err_msg)) => {
+                            warn!("Load returned an error: {}", err_msg);
+                            error_message = Some(format!("Load error: {}", err_msg));
+                            success = false;
+                        },
+                        Err(e) => {
+                            warn!("Failed to parse load result: {}", e);
+                            error_message = Some(format!("Parse error: {}", e));
+                            success = false;
+                        }
+                    }
+                },
+                Err(e) => {
+                    let load_time = load_start.elapsed();
+                    load_times.push(load_time.as_millis() as u64);
+                    warn!("Load function failed to execute: {}", e);
+                    error_message = Some(format!("Load execution error: {}", e));
+                    success = false;
+                }
+            }
+        } else {
+            if !args.benchmark {
+                info!("Skipping load operation");
+            }
+            load_times.push(0);
+        }
+        
+        if let Some(pb) = &progress_bar {
+            pb.inc(1);
+        }
     }
     
-    // Test transform function
-    let transformed_records = if !args.skip_transform {
-        info!("Calling transform function...");
-        let records_ptr = write_to_memory(&memory, &mut store, &records)?;
-        
-        match transform.call(&mut store, records_ptr) {
-            Ok(transformed_ptr) => {
-                let transformed: Vec<DataRecord> = read_from_memory(&memory, &store, transformed_ptr)?;
-                info!("Transformed {} records", transformed.len());
-                transformed
-            },
-            Err(e) => {
-                warn!("Transform function failed: {}", e);
-                info!("Using original records");
-                records
-            }
-        }
-    } else {
-        info!("Skipping transform operation");
-        records
+    let total_time = total_start.elapsed();
+    
+    if let Some(pb) = progress_bar {
+        pb.finish_with_message("Benchmark completed");
+    }
+    
+    // Compute benchmark results
+    let benchmark_result = BenchmarkResult {
+        extract_time_ms: extract_times,
+        transform_time_ms: transform_times,
+        load_time_ms: load_times,
+        total_time_ms: total_time.as_millis() as u64,
+        record_count: records.len(),
+        plugin_metadata: metadata.clone(),
+        timestamp: timestamp.clone(),
+        test_id: test_id.clone(),
     };
     
-    // Test load function
-    if !args.skip_load {
-        info!("Calling load function...");
-        let mut load_options = HashMap::new();
-        load_options.insert("table".to_string(), args.target_table.clone());
-        load_options.insert("connection_string".to_string(), args.connection.clone());
-        load_options.insert("database".to_string(), args.database.clone());
+    // Display benchmark results if in benchmark mode
+    if args.benchmark {
+        let avg_extract = if !benchmark_result.extract_time_ms.is_empty() {
+            benchmark_result.extract_time_ms.iter().sum::<u64>() as f64 / benchmark_result.extract_time_ms.len() as f64
+        } else {
+            0.0
+        };
         
-        let loader_options = LoaderOptions { options: load_options };
+        let avg_transform = if !benchmark_result.transform_time_ms.is_empty() {
+            benchmark_result.transform_time_ms.iter().sum::<u64>() as f64 / benchmark_result.transform_time_ms.len() as f64
+        } else {
+            0.0
+        };
         
-        let records_ptr = write_to_memory(&memory, &mut store, &transformed_records)?;
-        let options_ptr = write_to_memory(&memory, &mut store, &loader_options)?;
+        let avg_load = if !benchmark_result.load_time_ms.is_empty() {
+            benchmark_result.load_time_ms.iter().sum::<u64>() as f64 / benchmark_result.load_time_ms.len() as f64
+        } else {
+            0.0
+        };
         
-        match load.call(&mut store, (records_ptr, options_ptr)) {
-            Ok(result_ptr) => {
-                match read_from_memory::<LoadResult>(&memory, &store, result_ptr) {
-                    Ok(LoadResult::Success(count)) => {
-                        info!("Load succeeded: inserted {} records", count);
-                    },
-                    Ok(LoadResult::Error(err_msg)) => {
-                        warn!("Load returned an error: {}", err_msg);
-                    },
-                    Err(e) => {
-                        warn!("Failed to parse load result: {}", e);
-                    }
-                }
-            },
-            Err(e) => {
-                warn!("Load function failed to execute: {}", e);
-            }
-        }
-    } else {
-        info!("Skipping load operation");
+        info!("Benchmark Results:");
+        info!("------------------");
+        info!("Iterations: {}", args.iterations);
+        info!("Total Time: {:?}", total_time);
+        info!("Avg Extract Time: {:.2} ms", avg_extract);
+        info!("Avg Transform Time: {:.2} ms", avg_transform);
+        info!("Avg Load Time: {:.2} ms", avg_load);
+        info!("Record Count: {}", benchmark_result.record_count);
+    }
+    
+    // Create full test result
+    let test_result = TestResult {
+        plugin_metadata: metadata,
+        sample_records: records,
+        transformed_records,
+        performance: benchmark_result,
+        error: error_message,
+        success,
+        timestamp,
+        test_id,
+    };
+    
+    // Save results to file if requested
+    if args.save_results {
+        // Create output directory if it doesn't exist
+        std::fs::create_dir_all(&args.output_path)?;
+        
+        // Create output file
+        let file_name = format!("{}/postgresql_test_{}.json", args.output_path, test_result.test_id);
+        let mut file = File::create(&file_name)?;
+        
+        // Write test results to file
+        let json = serde_json::to_string_pretty(&test_result)?;
+        file.write_all(json.as_bytes())?;
+        
+        info!("Test results saved to {}", file_name);
     }
     
     info!("WASM PostgreSQL Plugin test completed successfully");

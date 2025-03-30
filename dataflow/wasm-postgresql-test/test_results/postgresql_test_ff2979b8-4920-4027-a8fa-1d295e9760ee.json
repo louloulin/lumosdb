@@ -1,0 +1,169 @@
+{
+  "plugin_metadata": {
+    "name": "postgresql",
+    "version": "0.1.0",
+    "description": "PostgreSQL plugin for Lumos DataFlow",
+    "plugin_type": "all"
+  },
+  "sample_records": [
+    {
+      "id": "pg_1",
+      "source": "postgresql",
+      "timestamp": "2025-03-30T00:00:00Z",
+      "fields": {
+        "active": "true",
+        "name": "PostgreSQL User 1",
+        "email": "user1@example.com"
+      }
+    },
+    {
+      "id": "pg_2",
+      "source": "postgresql",
+      "timestamp": "2025-03-30T00:00:00Z",
+      "fields": {
+        "name": "PostgreSQL User 2",
+        "active": "true",
+        "email": "user2@example.com"
+      }
+    },
+    {
+      "id": "pg_3",
+      "source": "postgresql",
+      "timestamp": "2025-03-30T00:00:00Z",
+      "fields": {
+        "name": "PostgreSQL User 3",
+        "active": "true",
+        "email": "user3@example.com"
+      }
+    },
+    {
+      "id": "pg_4",
+      "source": "postgresql",
+      "timestamp": "2025-03-30T00:00:00Z",
+      "fields": {
+        "email": "user4@example.com",
+        "name": "PostgreSQL User 4",
+        "active": "true"
+      }
+    },
+    {
+      "id": "pg_5",
+      "source": "postgresql",
+      "timestamp": "2025-03-30T00:00:00Z",
+      "fields": {
+        "email": "user5@example.com",
+        "active": "true",
+        "name": "PostgreSQL User 5"
+      }
+    }
+  ],
+  "transformed_records": [
+    {
+      "id": "pg_1",
+      "source": "postgresql",
+      "timestamp": "2025-03-30T00:00:00Z",
+      "fields": {
+        "active": "true",
+        "transformed": "true",
+        "email": "USER1@EXAMPLE.COM",
+        "name": "PostgreSQL User 1"
+      }
+    },
+    {
+      "id": "pg_2",
+      "source": "postgresql",
+      "timestamp": "2025-03-30T00:00:00Z",
+      "fields": {
+        "name": "PostgreSQL User 2",
+        "active": "true",
+        "email": "USER2@EXAMPLE.COM",
+        "transformed": "true"
+      }
+    },
+    {
+      "id": "pg_3",
+      "source": "postgresql",
+      "timestamp": "2025-03-30T00:00:00Z",
+      "fields": {
+        "active": "true",
+        "email": "USER3@EXAMPLE.COM",
+        "transformed": "true",
+        "name": "PostgreSQL User 3"
+      }
+    },
+    {
+      "id": "pg_4",
+      "source": "postgresql",
+      "timestamp": "2025-03-30T00:00:00Z",
+      "fields": {
+        "active": "true",
+        "name": "PostgreSQL User 4",
+        "email": "USER4@EXAMPLE.COM",
+        "transformed": "true"
+      }
+    },
+    {
+      "id": "pg_5",
+      "source": "postgresql",
+      "timestamp": "2025-03-30T00:00:00Z",
+      "fields": {
+        "transformed": "true",
+        "email": "USER5@EXAMPLE.COM",
+        "name": "PostgreSQL User 5",
+        "active": "true"
+      }
+    }
+  ],
+  "performance": {
+    "extract_time_ms": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "transform_time_ms": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "load_time_ms": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "total_time_ms": 2,
+    "record_count": 5,
+    "plugin_metadata": {
+      "name": "postgresql",
+      "version": "0.1.0",
+      "description": "PostgreSQL plugin for Lumos DataFlow",
+      "plugin_type": "all"
+    },
+    "timestamp": "2025-03-30T21:57:08",
+    "test_id": "ff2979b8-4920-4027-a8fa-1d295e9760ee"
+  },
+  "error": null,
+  "success": true,
+  "timestamp": "2025-03-30T21:57:08",
+  "test_id": "ff2979b8-4920-4027-a8fa-1d295e9760ee"
+}
