@@ -35,6 +35,18 @@ struct Args {
     /// MongoDB query for extraction (JSON format)
     #[clap(short, long, default_value = "{}")]
     query: String,
+    
+    /// Skip (don't run) extraction operation
+    #[clap(long, action = clap::ArgAction::SetTrue)]
+    skip_extract: bool,
+    
+    /// Skip (don't run) transformation operation
+    #[clap(long, action = clap::ArgAction::SetTrue)]
+    skip_transform: bool,
+    
+    /// Skip (don't run) loading operation
+    #[clap(long, action = clap::ArgAction::SetTrue)]
+    skip_load: bool,
 }
 
 // Simplified data structures just for testing
@@ -71,13 +83,16 @@ enum LoadResult {
 }
 
 fn main() -> Result<()> {
+    // Parse command line arguments
+    let args = Args::parse();
+    
     // Initialize logger
     env_logger::init();
     
     info!("Starting WASM MongoDB Plugin test");
     
     // Check if MongoDB WebAssembly plugin exists
-    let plugin_path = Path::new("../plugins/mongodb.wasm");
+    let plugin_path = Path::new(&args.plugin_path);
     if !plugin_path.exists() {
         return Err(anyhow!("MongoDB plugin not found at: {}", plugin_path.display()));
     }
@@ -139,34 +154,39 @@ fn main() -> Result<()> {
     
     // Prepare extraction options
     let mut options = HashMap::new();
-    options.insert("collection".to_string(), "test_collection".to_string());
-    options.insert("query".to_string(), "{}".to_string());
-    options.insert("connection_string".to_string(), "mongodb://localhost:27017".to_string());
-    options.insert("database".to_string(), "test".to_string());
+    options.insert("collection".to_string(), args.source_collection.clone());
+    options.insert("query".to_string(), args.query.clone());
+    options.insert("connection_string".to_string(), args.connection.clone());
+    options.insert("database".to_string(), args.database.clone());
     
     let extractor_options = ExtractorOptions { options };
     
     // Test extract function
-    info!("Calling extract function...");
-    let options_ptr = write_to_memory(&memory, &mut store, &extractor_options)?;
-    
-    let records = match extract.call(&mut store, options_ptr) {
-        Ok(result_ptr) => {
-            let extracted_records: Vec<DataRecord> = read_from_memory(&memory, &mut store, result_ptr)?;
-            info!("Extracted {} records", extracted_records.len());
-            
-            if extracted_records.is_empty() {
-                info!("No records extracted, using sample data");
+    let records = if !args.skip_extract {
+        info!("Calling extract function...");
+        let options_ptr = write_to_memory(&memory, &mut store, &extractor_options)?;
+        
+        match extract.call(&mut store, options_ptr) {
+            Ok(result_ptr) => {
+                let extracted_records: Vec<DataRecord> = read_from_memory(&memory, &mut store, result_ptr)?;
+                info!("Extracted {} records", extracted_records.len());
+                
+                if extracted_records.is_empty() {
+                    info!("No records extracted, using sample data");
+                    sample_records
+                } else {
+                    extracted_records
+                }
+            },
+            Err(e) => {
+                warn!("Extract function failed: {}", e);
+                info!("Using sample data instead");
                 sample_records
-            } else {
-                extracted_records
             }
-        },
-        Err(e) => {
-            warn!("Extract function failed: {}", e);
-            info!("Using sample data instead");
-            sample_records
         }
+    } else {
+        info!("Skipping extract operation");
+        sample_records
     };
     
     if !records.is_empty() {
@@ -174,55 +194,64 @@ fn main() -> Result<()> {
     }
     
     // Test transform function
-    info!("Calling transform function...");
-    let records_ptr = write_to_memory(&memory, &mut store, &records)?;
-    
-    let transformed_records = match transform.call(&mut store, records_ptr) {
-        Ok(transformed_ptr) => {
-            let transformed: Vec<DataRecord> = read_from_memory(&memory, &mut store, transformed_ptr)?;
-            info!("Transformed {} records", transformed.len());
-            transformed
-        },
-        Err(e) => {
-            warn!("Transform function failed: {}", e);
-            info!("Using original records");
-            records
+    let transformed_records = if !args.skip_transform {
+        info!("Calling transform function...");
+        let records_ptr = write_to_memory(&memory, &mut store, &records)?;
+        
+        match transform.call(&mut store, records_ptr) {
+            Ok(transformed_ptr) => {
+                let transformed: Vec<DataRecord> = read_from_memory(&memory, &mut store, transformed_ptr)?;
+                info!("Transformed {} records", transformed.len());
+                transformed
+            },
+            Err(e) => {
+                warn!("Transform function failed: {}", e);
+                info!("Using original records");
+                records
+            }
         }
+    } else {
+        info!("Skipping transform operation");
+        records
     };
     
     // Test load function
-    info!("Calling load function...");
-    let mut load_options = HashMap::new();
-    load_options.insert("collection".to_string(), "output_collection".to_string());
-    load_options.insert("connection_string".to_string(), "mongodb://localhost:27017".to_string());
-    load_options.insert("database".to_string(), "test".to_string());
-    
-    let loader_options = LoaderOptions { options: load_options };
-    
-    let records_ptr = write_to_memory(&memory, &mut store, &transformed_records)?;
-    let options_ptr = write_to_memory(&memory, &mut store, &loader_options)?;
-    
-    match load.call(&mut store, (records_ptr, options_ptr)) {
-        Ok(result_ptr) => {
-            match read_from_memory::<LoadResult>(&memory, &mut store, result_ptr) {
-                Ok(LoadResult::Success(count)) => {
-                    info!("Load succeeded: inserted {} records", count);
-                },
-                Ok(LoadResult::Error(err_msg)) => {
-                    warn!("Load returned an error: {}", err_msg);
-                },
-                Err(e) => {
-                    warn!("Failed to parse load result: {}", e);
-                    // Try to read the raw data to help debug the parsing error
-                    let raw_data = read_raw_memory(&memory, &mut store, result_ptr);
-                    debug!("Raw result data (first 100 bytes): {:?}", 
-                           raw_data.iter().take(100).collect::<Vec<_>>());
+    if !args.skip_load {
+        info!("Calling load function...");
+        let mut load_options = HashMap::new();
+        load_options.insert("collection".to_string(), args.target_collection.clone());
+        load_options.insert("connection_string".to_string(), args.connection.clone());
+        load_options.insert("database".to_string(), args.database.clone());
+        
+        let loader_options = LoaderOptions { options: load_options };
+        
+        let records_ptr = write_to_memory(&memory, &mut store, &transformed_records)?;
+        let options_ptr = write_to_memory(&memory, &mut store, &loader_options)?;
+        
+        match load.call(&mut store, (records_ptr, options_ptr)) {
+            Ok(result_ptr) => {
+                match read_from_memory::<LoadResult>(&memory, &mut store, result_ptr) {
+                    Ok(LoadResult::Success(count)) => {
+                        info!("Load succeeded: inserted {} records", count);
+                    },
+                    Ok(LoadResult::Error(err_msg)) => {
+                        warn!("Load returned an error: {}", err_msg);
+                    },
+                    Err(e) => {
+                        warn!("Failed to parse load result: {}", e);
+                        // Try to read the raw data to help debug the parsing error
+                        let raw_data = read_raw_memory(&memory, &mut store, result_ptr);
+                        debug!("Raw result data (first 100 bytes): {:?}", 
+                               raw_data.iter().take(100).collect::<Vec<_>>());
+                    }
                 }
+            },
+            Err(e) => {
+                warn!("Load function failed to execute: {}", e);
             }
-        },
-        Err(e) => {
-            warn!("Load function failed to execute: {}", e);
         }
+    } else {
+        info!("Skipping load operation");
     }
     
     info!("WASM MongoDB Plugin test completed successfully");
