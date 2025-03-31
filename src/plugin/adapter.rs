@@ -3,7 +3,7 @@ use crate::loaders::Loader;
 use crate::transformers::Transformer;
 use crate::types::DataRecord;
 use crate::plugin::{
-    with_wasm_plugin_manager, PluginType, WasmPluginInstance,
+    with_wasm_plugin_manager, WasmPluginType, WasmPluginInstance,
     init_wasm_plugin_manager, has_wasm_plugin
 };
 
@@ -174,7 +174,7 @@ pub fn create_wasm_extractor(plugin_name: &str) -> Result<Addr<dyn Extractor>> {
         let plugin = manager.get_plugin(plugin_name)
             .ok_or_else(|| anyhow!("Plugin not found"))?;
         
-        Ok(plugin.plugin_type == PluginType::Extractor || plugin.plugin_type == PluginType::All)
+        Ok(plugin.plugin_type == WasmPluginType::Extractor || plugin.plugin_type == WasmPluginType::All)
     })?;
 
     if !is_valid {
@@ -196,7 +196,7 @@ pub fn create_wasm_transformer(plugin_name: &str) -> Result<Addr<dyn Transformer
         let plugin = manager.get_plugin(plugin_name)
             .ok_or_else(|| anyhow!("Plugin not found"))?;
         
-        Ok(plugin.plugin_type == PluginType::Transformer || plugin.plugin_type == PluginType::All)
+        Ok(plugin.plugin_type == WasmPluginType::Transformer || plugin.plugin_type == WasmPluginType::All)
     })?;
 
     if !is_valid {
@@ -218,7 +218,7 @@ pub fn create_wasm_loader(plugin_name: &str) -> Result<Addr<dyn Loader>> {
         let plugin = manager.get_plugin(plugin_name)
             .ok_or_else(|| anyhow!("Plugin not found"))?;
         
-        Ok(plugin.plugin_type == PluginType::Loader || plugin.plugin_type == PluginType::All)
+        Ok(plugin.plugin_type == WasmPluginType::Loader || plugin.plugin_type == WasmPluginType::All)
     })?;
 
     if !is_valid {
@@ -249,11 +249,10 @@ pub fn list_wasm_plugins() -> Result<Vec<String>> {
     })
 }
 
-/// 按类型获取WebAssembly插件列表
-pub fn list_wasm_plugins_by_type(plugin_type: PluginType) -> Result<Vec<String>> {
+/// 列出指定类型的WebAssembly插件
+pub fn list_wasm_plugins_by_type(plugin_type: WasmPluginType) -> Result<Vec<String>> {
     with_wasm_plugin_manager(|manager| {
         let plugins = manager.get_plugins_by_type(plugin_type);
-        let names: Vec<String> = plugins.keys().cloned().collect();
-        Ok(names)
+        Ok(plugins.keys().cloned().collect())
     })
 } 

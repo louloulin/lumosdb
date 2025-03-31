@@ -56,7 +56,7 @@ tokio = { version = "1.28.1", features = ["full"] }
 serde = { version = "1.0.160", features = ["derive"] }
 serde_json = "1.0.96"
 serde_yaml = "0.9.21"
-chrono = { version = "0.4.24", features = ["serde"] }
+chrono = { workspace = true }
 uuid = { version = "1.3.1", features = ["v4", "serde"] }
 async-trait = "0.1.68"
 futures = "0.3.28"
@@ -90,4 +90,12 @@ sql = ["sqlx"]
 plugins = []
 
 [workspace]
-exclude = ["examples/plugins/postgresql"] 
+members = ["dataflow/wasm-postgresql-test"]
+exclude = ["examples/plugins/postgresql"]
+
+[workspace.dependencies]
+chrono = { version = "0.4.31", features = ["serde"] }
+
+[patch.crates-io]
+# 暂时注释掉，使用最新版本
+# chrono = { git = "https://github.com/chronotope/chrono.git", tag = "v0.4.24" } 
