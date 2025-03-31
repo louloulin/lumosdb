@@ -4,6 +4,7 @@ pub mod query;
 pub mod sync;
 pub mod vector;
 pub mod utils;
+pub mod nlq;
 
 use std::error::Error;
 use std::fmt;
