@@ -1,0 +1,103 @@
+# PostgreSQL WASM测试优化配置文件
+
+# 默认配置
+[profiles.default]
+description = "默认配置，提供良好的性能和兼容性平衡"
+optimization_level = "speed"
+compilation_mode = "eager"
+strategy = "auto"
+fuel_enabled = false
+fuel_limit = 10000000
+native_unwind_info = false
+debug_info = false
+reference_types = true
+simd = true
+multi_memory = false
+threads = false
+memory64 = false
+bulk_memory = true
+
+# 高性能配置
+[profiles.high_performance]
+description = "优化速度，适用于需要最高性能的场景"
+optimization_level = "speed"
+compilation_mode = "eager"
+strategy = "cranelift"
+fuel_enabled = false
+fuel_limit = 100000000
+native_unwind_info = false
+debug_info = false
+reference_types = true
+simd = true
+multi_memory = true
+threads = true
+memory64 = true
+bulk_memory = true
+
+# 快速启动配置
+[profiles.fast_startup]
+description = "优化启动时间，适用于频繁加载的场景"
+optimization_level = "speed_and_size"
+compilation_mode = "lazy"
+strategy = "auto"
+fuel_enabled = false
+fuel_limit = 10000000
+native_unwind_info = false
+debug_info = false
+reference_types = true
+simd = true
+multi_memory = false
+threads = false
+memory64 = false
+bulk_memory = true
+
+# 解释器配置
+[profiles.interpreter]
+description = "使用解释器模式，适用于调试环境"
+optimization_level = "none"
+compilation_mode = "lazy"
+strategy = "auto"
+fuel_enabled = true
+fuel_limit = 1000000
+native_unwind_info = true
+debug_info = true
+reference_types = true
+simd = false
+multi_memory = false
+threads = false
+memory64 = false
+bulk_memory = true
+
+# 最小内存配置
+[profiles.minimal_memory]
+description = "优化内存使用，适用于资源受限环境"
+optimization_level = "speed_and_size"
+compilation_mode = "lazy"
+strategy = "auto"
+fuel_enabled = false
+fuel_limit = 5000000
+native_unwind_info = false
+debug_info = false
+reference_types = false
+simd = false
+multi_memory = false
+threads = false
+memory64 = false
+bulk_memory = false
+
+# 最大兼容性配置
+[profiles.max_compatibility]
+description = "最大化兼容性，关闭实验性功能"
+optimization_level = "speed"
+compilation_mode = "eager"
+strategy = "cranelift"
+fuel_enabled = false
+fuel_limit = 10000000
+native_unwind_info = false
+debug_info = false
+reference_types = false
+simd = false
+multi_memory = false
+threads = false
+memory64 = false
+bulk_memory = false 

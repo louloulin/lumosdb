@@ -1,0 +1,35 @@
+# PostgreSQL WASM测试配置文件示例
+
+[wasmtime]
+# WebAssembly特性配置
+memory64 = true               # 启用内存64功能
+simd = true                   # 启用SIMD指令集
+extended_const = true         # 启用扩展常量
+threads = true                # 启用线程支持
+
+# 执行配置
+use_interpreter = false       # 是否使用解释器而非JIT编译
+compilation_mode = "eager"    # 编译模式 (eager, lazy, auto)
+optimization_level = "speed"  # 优化级别 (none, speed, speed_and_size)
+cranelift_opt_level = 2       # Cranelift优化级别 (0-2)
+inline_stack_probes = true    # 使用内联探针堆栈
+
+[test]
+# 测试配置
+iterations = 10              # 默认迭代次数
+benchmark = true             # 启用基准测试模式
+save_results = true          # 自动保存结果
+html_report = true           # 生成HTML报告
+histogram_buckets = 10       # 直方图桶数
+
+[database]
+# 数据库连接配置
+connection = "postgres://postgres:postgres@localhost:5432/postgres"
+database = "postgres"
+source_table = "users"
+target_table = "output_users"
+query = "SELECT * FROM users LIMIT 100"
+
+[plugins]
+# 插件配置
+postgresql_path = "../plugins/postgresql.wasm" 

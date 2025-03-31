@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PostgreSQL Plugin Comparison Report</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1, h2, h3 {
+            color: #2c3e50;
+        }
+        h1 {
+            border-bottom: 2px solid #eee;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f8f8f8;
+            font-weight: 600;
+        }
+        tr:hover {
+            background-color: #f5f5f5;
+        }
+        .card {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .chart-container {
+            width: 100%;
+            height: 300px;
+            margin: 20px 0;
+        }
+        .metadata {
+            display: flex;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+        }
+        .metadata-item {
+            width: 250px;
+            margin-right: 20px;
+            margin-bottom: 15px;
+        }
+        .metadata-label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #666;
+        }
+        .metadata-value {
+            font-size: 1.2em;
+            color: #2c3e50;
+        }
+        .comparison-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-gap: 20px;
+            margin-bottom: 20px;
+        }
+        .comparison-card {
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        .plugin-title {
+            font-size: 1.2em;
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2c3e50;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+        }
+        .comparison-metric {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+        }
+        .comparison-label {
+            font-weight: bold;
+            color: #666;
+        }
+        .comparison-value {
+            color: #2c3e50;
+        }
+        .diff-better {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .diff-worse {
+            color: #e74c3c;
+            font-weight: bold;
+        }
+        .diff-neutral {
+            color: #7f8c8d;
+        }
+        .summary-box {
+            background-color: #f9f9f9;
+            border-left: 4px solid #3498db;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .summary-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #2c3e50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>PostgreSQL Plugin Comparison Report</h1>
+        
+        <div class="summary-box">
+            <div class="summary-title">Comparison Summary</div>
+            <p>
+                This report compares the performance of two PostgreSQL plugins:<br>
+                • <strong>{{plugin1.name}} v{{plugin1.version}}</strong><br>
+                • <strong>{{plugin2.name}} v{{plugin2.version}}</strong>
+            </p>
+            <p>
+                Data matching between plugins: <strong>{{#if records.matched}}Yes{{else}}No{{/if}}</strong><br>
+                Timestamp: {{timestamp}}
+            </p>
+        </div>
+        
+        <div class="comparison-grid">
+            <div class="comparison-card">
+                <div class="plugin-title">Plugin 1: {{plugin1.name}} v{{plugin1.version}}</div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Type:</div>
+                    <div class="comparison-value">{{plugin1.type}}</div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Records Extracted:</div>
+                    <div class="comparison-value">{{records.count1}}</div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Records Transformed:</div>
+                    <div class="comparison-value">{{transform.count1}}</div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Extract Time:</div>
+                    <div class="comparison-value">{{performance.extract1}} ms</div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Transform Time:</div>
+                    <div class="comparison-value">{{performance.transform1}} ms</div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Load Time:</div>
+                    <div class="comparison-value">{{performance.load1}} ms</div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Total Time:</div>
+                    <div class="comparison-value">{{performance.total1}} ms</div>
+                </div>
+            </div>
+            
+            <div class="comparison-card">
+                <div class="plugin-title">Plugin 2: {{plugin2.name}} v{{plugin2.version}}</div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Type:</div>
+                    <div class="comparison-value">{{plugin2.type}}</div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Records Extracted:</div>
+                    <div class="comparison-value">
+                        {{records.count2}}
+                        {{#if records.diff}}
+                            {{#if (gt records.diff 0)}}
+                                <span class="diff-better">(+{{records.diff}})</span>
+                            {{else}}
+                                <span class="diff-worse">({{records.diff}})</span>
+                            {{/if}}
+                        {{/if}}
+                    </div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Records Transformed:</div>
+                    <div class="comparison-value">
+                        {{transform.count2}}
+                        {{#if transform.diff}}
+                            {{#if (gt transform.diff 0)}}
+                                <span class="diff-better">(+{{transform.diff}})</span>
+                            {{else}}
+                                <span class="diff-worse">({{transform.diff}})</span>
+                            {{/if}}
+                        {{/if}}
+                    </div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Extract Time:</div>
+                    <div class="comparison-value">
+                        {{performance.extract2}} ms
+                        <span class="{{#if (gt performance.extract_diff 0)}}diff-worse{{else}}diff-better{{/if}}">
+                            ({{performance.extract_diff}} ms / {{performance.extract_diff_pct}})
+                        </span>
+                    </div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Transform Time:</div>
+                    <div class="comparison-value">
+                        {{performance.transform2}} ms
+                        <span class="{{#if (gt performance.transform_diff 0)}}diff-worse{{else}}diff-better{{/if}}">
+                            ({{performance.transform_diff}} ms / {{performance.transform_diff_pct}})
+                        </span>
+                    </div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Load Time:</div>
+                    <div class="comparison-value">
+                        {{performance.load2}} ms
+                        <span class="{{#if (gt performance.load_diff 0)}}diff-worse{{else}}diff-better{{/if}}">
+                            ({{performance.load_diff}} ms / {{performance.load_diff_pct}})
+                        </span>
+                    </div>
+                </div>
+                <div class="comparison-metric">
+                    <div class="comparison-label">Total Time:</div>
+                    <div class="comparison-value">
+                        {{performance.total2}} ms
+                        <span class="{{#if (gt performance.total_diff 0)}}diff-worse{{else}}diff-better{{/if}}">
+                            ({{performance.total_diff}} ms / {{performance.total_diff_pct}})
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Performance Comparison</h2>
+            <div class="chart-container">
+                <canvas id="comparisonChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="card">
+            <h2>Relative Performance</h2>
+            <div class="chart-container">
+                <canvas id="relativeChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Performance Comparison Chart
+        const comparisonCtx = document.getElementById('comparisonChart').getContext('2d');
+        const comparisonChart = new Chart(comparisonCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Extract', 'Transform', 'Load', 'Total'],
+                datasets: [
+                    {
+                        label: '{{plugin1.name}} v{{plugin1.version}}',
+                        data: [
+                            parseFloat('{{performance.extract1}}'),
+                            parseFloat('{{performance.transform1}}'),
+                            parseFloat('{{performance.load1}}'),
+                            parseFloat('{{performance.total1}}')
+                        ],
+                        backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                        borderColor: 'rgba(52, 152, 219, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: '{{plugin2.name}} v{{plugin2.version}}',
+                        data: [
+                            parseFloat('{{performance.extract2}}'),
+                            parseFloat('{{performance.transform2}}'),
+                            parseFloat('{{performance.load2}}'),
+                            parseFloat('{{performance.total2}}')
+                        ],
+                        backgroundColor: 'rgba(46, 204, 113, 0.7)',
+                        borderColor: 'rgba(46, 204, 113, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Time (ms)'
+                        }
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Operation Time Comparison (ms)'
+                    }
+                }
+            }
+        });
+        
+        // Relative Performance Chart (percentage difference)
+        const relativeCtx = document.getElementById('relativeChart').getContext('2d');
+        const relativeChart = new Chart(relativeCtx, {
+            type: 'bar',
+            data: {
+                labels: ['Extract', 'Transform', 'Load', 'Total'],
+                datasets: [
+                    {
+                        label: 'Percentage Difference',
+                        data: [
+                            parseFloat('{{performance.extract_diff_pct}}'.replace('%', '')),
+                            parseFloat('{{performance.transform_diff_pct}}'.replace('%', '')),
+                            parseFloat('{{performance.load_diff_pct}}'.replace('%', '')),
+                            parseFloat('{{performance.total_diff_pct}}'.replace('%', ''))
+                        ],
+                        backgroundColor: [
+                            parseFloat('{{performance.extract_diff_pct}}'.replace('%', '')) > 0 ? 'rgba(231, 76, 60, 0.7)' : 'rgba(46, 204, 113, 0.7)',
+                            parseFloat('{{performance.transform_diff_pct}}'.replace('%', '')) > 0 ? 'rgba(231, 76, 60, 0.7)' : 'rgba(46, 204, 113, 0.7)',
+                            parseFloat('{{performance.load_diff_pct}}'.replace('%', '')) > 0 ? 'rgba(231, 76, 60, 0.7)' : 'rgba(46, 204, 113, 0.7)',
+                            parseFloat('{{performance.total_diff_pct}}'.replace('%', '')) > 0 ? 'rgba(231, 76, 60, 0.7)' : 'rgba(46, 204, 113, 0.7)'
+                        ],
+                        borderColor: [
+                            parseFloat('{{performance.extract_diff_pct}}'.replace('%', '')) > 0 ? 'rgba(231, 76, 60, 1)' : 'rgba(46, 204, 113, 1)',
+                            parseFloat('{{performance.transform_diff_pct}}'.replace('%', '')) > 0 ? 'rgba(231, 76, 60, 1)' : 'rgba(46, 204, 113, 1)',
+                            parseFloat('{{performance.load_diff_pct}}'.replace('%', '')) > 0 ? 'rgba(231, 76, 60, 1)' : 'rgba(46, 204, 113, 1)',
+                            parseFloat('{{performance.total_diff_pct}}'.replace('%', '')) > 0 ? 'rgba(231, 76, 60, 1)' : 'rgba(46, 204, 113, 1)'
+                        ],
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Percentage Difference (%)'
+                        }
+                    }
+                },
+                plugins: {
+                    title: {
+                        display: true,
+                        text: 'Relative Performance (Plugin 2 vs Plugin 1)'
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                let value = context.parsed.y;
+                                return value + '% ' + (value > 0 ? 'slower' : 'faster');
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html> 

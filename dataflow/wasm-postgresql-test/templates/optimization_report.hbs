@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Wasmtime 优化分析报告</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      margin: 0;
+      padding: 20px;
+      color: #333;
+    }
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1, h2, h3 {
+      color: #2c3e50;
+    }
+    .header {
+      background-color: #f8f9fa;
+      padding: 20px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+      border-left: 5px solid #3498db;
+    }
+    .test-info {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .test-info div {
+      flex: 1;
+      min-width: 200px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 20px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 12px;
+      text-align: left;
+    }
+    th {
+      background-color: #f2f2f2;
+      font-weight: bold;
+    }
+    tr:nth-child(even) {
+      background-color: #f9f9f9;
+    }
+    tr:hover {
+      background-color: #f1f1f1;
+    }
+    .best-row {
+      background-color: #e3f2fd !important;
+    }
+    .chart-container {
+      margin-top: 30px;
+      height: 400px;
+    }
+    .footer {
+      margin-top: 50px;
+      text-align: center;
+      font-size: 0.8em;
+      color: #7f8c8d;
+    }
+  </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Wasmtime 优化分析报告</h1>
+      <div class="test-info">
+        <div>
+          <p><strong>测试ID:</strong> {{test_id}}</p>
+          <p><strong>时间戳:</strong> {{timestamp}}</p>
+        </div>
+      </div>
+    </div>
+
+    <h2>优化结果比较</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>配置名称</th>
+          <th>内存64</th>
+          <th>SIMD</th>
+          <th>解释器</th>
+          <th>编译模式</th>
+          <th>优化级别</th>
+          <th>总时间(ms)</th>
+          <th>提取(ms)</th>
+          <th>转换(ms)</th>
+          <th>加载(ms)</th>
+        </tr>
+      </thead>
+      <tbody id="results-table">
+        <!-- 结果将通过JS动态加载 -->
+      </tbody>
+    </table>
+
+    <div class="chart-container">
+      <canvas id="performance-chart"></canvas>
+    </div>
+    
+    <div class="chart-container">
+      <canvas id="breakdown-chart"></canvas>
+    </div>
+
+    <div class="footer">
+      <p>PostgreSQL 插件优化分析 | 生成时间: {{timestamp}}</p>
+    </div>
+  </div>
+
+  <script>
+    // 解析结果数据
+    const resultsData = JSON.parse('{{{results}}}');
+    
+    // 按总时间排序
+    resultsData.sort((a, b) => a.total_time_ms - b.total_time_ms);
+    
+    // 填充表格
+    const tableBody = document.getElementById('results-table');
+    resultsData.forEach((profile, index) => {
+      const row = document.createElement('tr');
+      if (index === 0) {
+        row.classList.add('best-row');
+      }
+      
+      row.innerHTML = `
+        <td>${profile.profile_name}</td>
+        <td>${profile.memory64_enabled ? 'Yes' : 'No'}</td>
+        <td>${profile.simd_enabled ? 'Yes' : 'No'}</td>
+        <td>${profile.use_interpreter ? 'Yes' : 'No'}</td>
+        <td>${profile.compilation_mode}</td>
+        <td>${profile.optimization_level}</td>
+        <td>${profile.total_time_ms}</td>
+        <td>${profile.avg_extract_time_ms.toFixed(2)}</td>
+        <td>${profile.avg_transform_time_ms.toFixed(2)}</td>
+        <td>${profile.avg_load_time_ms.toFixed(2)}</td>
+      `;
+      
+      tableBody.appendChild(row);
+    });
+    
+    // 创建总时间比较图表
+    const ctx = document.getElementById('performance-chart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: resultsData.map(profile => profile.profile_name),
+        datasets: [{
+          label: '总执行时间 (ms)',
+          data: resultsData.map(profile => profile.total_time_ms),
+          backgroundColor: resultsData.map((_, index) => 
+            index === 0 ? 'rgba(54, 162, 235, 0.8)' : 'rgba(201, 203, 207, 0.8)'
+          ),
+          borderColor: resultsData.map((_, index) => 
+            index === 0 ? 'rgb(54, 162, 235)' : 'rgb(201, 203, 207)'
+          ),
+          borderWidth: 1
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title: {
+            display: true,
+            text: '各配置文件总执行时间比较'
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: '时间 (ms)'
+            }
+          },
+          x: {
+            title: {
+              display: true,
+              text: '配置文件'
+            }
+          }
+        }
+      }
+    });
+    
+    // 创建阶段时间分解图表
+    const breakdownCtx = document.getElementById('breakdown-chart').getContext('2d');
+    new Chart(breakdownCtx, {
+      type: 'bar',
+      data: {
+        labels: resultsData.map(profile => profile.profile_name),
+        datasets: [
+          {
+            label: '提取时间 (ms)',
+            data: resultsData.map(profile => profile.avg_extract_time_ms),
+            backgroundColor: 'rgba(255, 99, 132, 0.8)',
+            borderColor: 'rgb(255, 99, 132)',
+            borderWidth: 1
+          },
+          {
+            label: '转换时间 (ms)',
+            data: resultsData.map(profile => profile.avg_transform_time_ms),
+            backgroundColor: 'rgba(75, 192, 192, 0.8)',
+            borderColor: 'rgb(75, 192, 192)',
+            borderWidth: 1
+          },
+          {
+            label: '加载时间 (ms)',
+            data: resultsData.map(profile => profile.avg_load_time_ms),
+            backgroundColor: 'rgba(255, 159, 64, 0.8)',
+            borderColor: 'rgb(255, 159, 64)',
+            borderWidth: 1
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          title: {
+            display: true,
+            text: '各阶段执行时间分解'
+          },
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            title: {
+              display: true,
+              text: '时间 (ms)'
+            }
+          },
+          x: {
+            title: {
+              display: true,
+              text: '配置文件'
+            }
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html> 

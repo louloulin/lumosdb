@@ -1,0 +1,2329 @@
+use clap::{Parser, Subcommand, Args as ClapArgs};
+use std::path::{Path, PathBuf};
+use serde::{Serialize, Deserialize, de::DeserializeOwned};
+use wasmtime::{Engine, Module, Store, Linker, Memory, Config as WasmConfig, OptLevel, Strategy, CompilationMode};
+use wasmtime_wasi::{WasiCtx, WasiCtxBuilder};
+use wasmtime_wasi::preview2;
+use wasmtime_wasi::bindings::cli::environment::add_to_linker as add_env_to_linker;
+use wasmtime_wasi::bindings::cli::exit::add_to_linker as add_exit_to_linker;
+use wasmtime_wasi::bindings::cli::stdin::add_to_linker as add_stdin_to_linker;
+use wasmtime_wasi::bindings::cli::stdout::add_to_linker as add_stdout_to_linker;
+use wasmtime_wasi::bindings::cli::stderr::add_to_linker as add_stderr_to_linker;
+use anyhow::{anyhow, Result, Context};
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+use std::fs::File;
+use std::io::{Write, BufWriter, Read};
+use log::{info, warn, error};
+use env_logger;
+use serde_json::{json, Value};
+use uuid::Uuid;
+use indicatif::{ProgressBar, ProgressStyle};
+use chrono::{Utc, Local, DateTime};
+use std::fs;
+use csv::Writer as CsvWriter;
+use prettytable::{Table, Row, Cell, Attr, color};
+use similar::{ChangeTag, TextDiff};
+use std::fs::create_dir_all;
+use handlebars::Handlebars;
+use tempfile::Builder;
+use open;
+use config::{Config as ConfigFile, File as ConfigFileSource};
+use toml::Value as TomlValue;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+use bincode;
+use lazy_static::lazy_static;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+// Command line arguments
+#[derive(Parser, Debug)]
+#[command(author = "Lumos DB Team", about = "Test program for PostgreSQL WASM plugin")]
+struct Args {
+    /// Path to the PostgreSQL WASM plugin
+    #[arg(short, long, default_value = "../plugins/postgresql.wasm")]
+    plugin_path: String,
+    
+    /// PostgreSQL connection string
+    #[arg(short, long, default_value = "postgres://postgres:postgres@localhost:5432/postgres")]
+    connection: String,
+    
+    /// PostgreSQL database name
+    #[arg(short, long, default_value = "postgres")]
+    database: String,
+    
+    /// PostgreSQL table for extraction
+    #[arg(short, long, default_value = "users")]
+    source_table: String,
+    
+    /// PostgreSQL table for loading
+    #[arg(long, default_value = "output_users")]
+    target_table: String,
+    
+    /// SQL query for extraction
+    #[arg(short, long, default_value = "SELECT * FROM users LIMIT 10")]
+    query: String,
+    
+    /// Skip (don't run) extraction operation
+    #[arg(long)]
+    skip_extract: bool,
+    
+    /// Skip (don't run) transformation operation
+    #[arg(long)]
+    skip_transform: bool,
+    
+    /// Skip (don't run) loading operation
+    #[arg(long)]
+    skip_load: bool,
+    
+    /// Save test results to JSON file
+    #[arg(long)]
+    save_results: bool,
+    
+    /// Generate HTML report
+    #[arg(long)]
+    html_report: bool,
+    
+    /// Open HTML report in browser after generation
+    #[arg(long)]
+    open_report: bool,
+    
+    /// Output path for test results
+    #[arg(long, default_value = "./test_results")]
+    output_path: String,
+    
+    /// Number of iterations for benchmarking
+    #[arg(long, default_value = "1")]
+    iterations: usize,
+    
+    /// Run in benchmark mode (focus on performance)
+    #[arg(long)]
+    benchmark: bool,
+    
+    /// Export results to CSV format
+    #[arg(long)]
+    export_csv: bool,
+    
+    /// Path to another plugin for comparison
+    #[arg(long)]
+    compare_with: Option<String>,
+    
+    /// Filter records by field value (format: field=value)
+    #[arg(long)]
+    filter: Option<String>,
+    
+    /// Show detailed record information
+    #[arg(long)]
+    show_records: bool,
+    
+    /// Limit the number of records to display
+    #[arg(long, default_value = "5")]
+    record_limit: usize,
+    
+    /// Number of histogram buckets for visualization
+    #[arg(long, default_value = "5")]
+    histogram_buckets: usize,
+    
+    /// Enable interactive visualizations in HTML report
+    #[arg(long)]
+    visualize: bool,
+    
+    /// Test schema migration capabilities
+    #[arg(long)]
+    test_migration: bool,
+    
+    /// SQL script to create source schema for migration testing
+    #[arg(long)]
+    source_schema: Option<String>,
+    
+    /// SQL script to create target schema for migration testing
+    #[arg(long)]
+    target_schema: Option<String>,
+    
+    /// Wasmtime配置文件路径
+    #[arg(long)]
+    wasmtime_config: Option<String>,
+    
+    /// 使用解释器而非JIT编译
+    #[arg(long)]
+    use_interpreter: bool,
+    
+    /// 启用内存64功能
+    #[arg(long)]
+    memory64: bool,
+    
+    /// 禁用内存64功能
+    #[arg(long)]
+    no_memory64: bool,
+    
+    /// 启用SIMD功能
+    #[arg(long)]
+    simd: bool,
+    
+    /// 禁用SIMD功能
+    #[arg(long)]
+    no_simd: bool,
+    
+    /// 编译模式 (eager, lazy)
+    #[arg(long, default_value = "eager")]
+    compilation_mode: String,
+    
+    #[clap(subcommand)]
+    command: Option<Commands>,
+    
+    /// 运行优化分析模式
+    #[arg(long)]
+    optimization_analysis: bool,
+    
+    /// 用于优化分析的配置文件
+    #[arg(long)]
+    optimization_profiles: Option<String>,
+    
+    /// 优化分析中的迭代次数
+    #[arg(long, default_value = "5")]
+    opt_iterations: usize,
+    
+    /// 堆起始位置
+    #[arg(long, default_value = "0")]
+    heap_start: usize,
+    
+    /// 燃料启用
+    #[arg(long, default_value = "false")]
+    fuel_enabled: bool,
+    
+    /// 燃料限制
+    #[arg(long, default_value = "0")]
+    fuel_limit: u64,
+    
+    /// 原生解压信息
+    #[arg(long, default_value = "false")]
+    native_unwind_info: bool,
+    
+    /// 调试信息
+    #[arg(long, default_value = "false")]
+    debug_info: bool,
+    
+    /// 引用类型
+    #[arg(long, default_value = "false")]
+    reference_types: bool,
+    
+    /// 多内存
+    #[arg(long, default_value = "false")]
+    multi_memory: bool,
+    
+    /// 线程数
+    #[arg(long, default_value = "1")]
+    threads: usize,
+    
+    /// 内存64
+    #[arg(long, default_value = "false")]
+    memory64: bool,
+    
+    /// 批量内存
+    #[arg(long, default_value = "false")]
+    bulk_memory: bool,
+    
+    /// 优化级别 (none, speed, speed_and_size)
+    #[arg(long, default_value = "speed")]
+    optimization_level: String,
+    
+    /// 策略 (cranelift, auto)
+    #[arg(long, default_value = "cranelift")]
+    strategy: String,
+    
+    /// 比较模式
+    #[arg(long)]
+    compare: Option<String>,
+    
+    /// 过滤字段
+    #[arg(long)]
+    filter_field: Option<String>,
+    
+    /// 过滤值
+    #[arg(long)]
+    filter_value: Option<String>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    #[command(about = "Compare two plugins")]
+    Compare {
+        #[arg(long, required = true, help = "Path to the second WASM plugin for comparison")]
+        plugin2: String,
+    },
+    #[command(about = "分析不同Wasmtime配置的性能")]
+    Optimize {
+        #[arg(long, help = "测试迭代次数")]
+        iterations: Option<usize>,
+        
+        #[arg(long, help = "自定义优化配置文件路径")]
+        profiles: Option<String>,
+        
+        #[arg(long, help = "生成HTML报告")]
+        html: bool,
+        
+        #[arg(long, help = "打开报告")]
+        open: bool,
+    }
+}
+
+// Simplified data structures just for testing
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct DataRecord {
+    pub id: String,
+    pub source: String,
+    pub timestamp: String,
+    pub fields: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ExtractorOptions {
+    pub options: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct LoaderOptions {
+    pub options: HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct PluginMetadata {
+    pub name: String,
+    pub version: String,
+    pub description: String,
+    pub plugin_type: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum LoadResult {
+    Success(u32),
+    Error(String),
+}
+
+// Struct to hold timing information
+#[derive(Debug, Serialize, Deserialize, Clone)]
+struct BenchmarkResult {
+    extract_time_ms: Vec<u64>,
+    transform_time_ms: Vec<u64>,
+    load_time_ms: Vec<u64>,
+    total_time_ms: u64,
+    record_count: usize,
+    plugin_metadata: PluginMetadata,
+    timestamp: String,
+    test_id: String,
+}
+
+// Struct to hold complete test results
+#[derive(Debug, Serialize, Deserialize)]
+struct TestResult {
+    plugin_metadata: PluginMetadata,
+    sample_records: Vec<DataRecord>,
+    transformed_records: Vec<DataRecord>,
+    performance: BenchmarkResult,
+    error: Option<String>,
+    success: bool,
+    timestamp: String,
+    test_id: String,
+}
+
+// Add this at the top of the file (with other statics)
+static mut HISTOGRAM_BUCKETS: usize = 5;
+
+/// Wasmtime引擎配置
+#[derive(Debug, Clone)]
+struct WasmtimeConfig {
+    /// 启用内存64功能
+    memory64_enabled: bool,
+    /// 启用SIMD功能
+    simd_enabled: bool,
+    /// 启用扩展常量功能
+    extended_const_enabled: bool,
+    /// 启用线程功能
+    threads_enabled: bool,
+    /// 使用解释器而非JIT编译
+    use_interpreter: bool,
+    /// 编译模式 (eager, lazy)
+    compilation_mode: String,
+    /// 优化级别 (none, speed, speed_and_size)
+    optimization_level: String,
+    /// 代码分段大小
+    cranelift_opt_level: u8,
+    /// 使用内联探针堆栈
+    inline_stack_probes: bool,
+    /// 燃料启用
+    fuel_enabled: bool,
+    /// 燃料限制
+    fuel_limit: u64,
+    /// 原生解压信息
+    native_unwind_info: bool,
+    /// 调试信息
+    debug_info: bool,
+    /// 引用类型
+    reference_types: bool,
+    /// 多内存
+    multi_memory: bool,
+    /// 线程数
+    threads: usize,
+    /// 内存64
+    memory64: bool,
+    /// 批量内存
+    bulk_memory: bool,
+}
+
+impl Default for WasmtimeConfig {
+    fn default() -> Self {
+        Self {
+            memory64_enabled: true,
+            simd_enabled: true,
+            extended_const_enabled: true,
+            threads_enabled: true,
+            use_interpreter: false,
+            compilation_mode: "eager".to_string(),
+            optimization_level: "speed".to_string(),
+            cranelift_opt_level: 2,
+            inline_stack_probes: true,
+            fuel_enabled: false,
+            fuel_limit: 0,
+            native_unwind_info: false,
+            debug_info: false,
+            reference_types: false,
+            multi_memory: false,
+            threads: 1,
+            memory64: true,
+            bulk_memory: false,
+        }
+    }
+}
+
+/// Wasmtime优化配置组合
+#[derive(Debug, Clone)]
+struct OptimizationProfile {
+    name: String,
+    description: String,
+    config: WasmtimeConfig,
+}
+
+// Function to compare two plugins
+fn compare_plugins(
+    plugin1_path: &str, 
+    plugin2_path: &str, 
+    connection: &str,
+    database: &str,
+    query: &str,
+    source_table: &str
+) -> Result<ComparisonResult> {
+    info!("比较插件性能:");
+    info!("  插件1: {}", plugin1_path);
+    info!("  插件2: {}", plugin2_path);
+    
+    // 运行第一个插件测试
+    let iterations = 10; // 使用固定迭代次数进行比较
+    let result1 = run_plugin_test(plugin1_path, connection, database, query, source_table, iterations, &WasmtimeConfig::default())?;
+    
+    // 运行第二个插件测试
+    let result2 = run_plugin_test(plugin2_path, connection, database, query, source_table, iterations, &WasmtimeConfig::default())?;
+    
+    // 计算时间差异
+    let time_diff = result1.total_time_ms as i64 - result2.total_time_ms as i64;
+    let time_diff_percent = if result1.total_time_ms > 0 {
+        (time_diff.abs() as f64 / result1.total_time_ms as f64) * 100.0
+    } else {
+        0.0
+    };
+    
+    // 创建比较结果
+    let comparison = ComparisonResult {
+        plugin1: result1.clone(),
+        plugin2: result2.clone(),
+        plugin1_path: plugin1_path.to_string(),
+        plugin2_path: plugin2_path.to_string(),
+        time_diff_ms: time_diff,
+        time_diff_percent,
+        plugin1_faster: time_diff < 0,
+        timestamp: Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+        test_id: Uuid::new_v4().to_string(),
+    };
+    
+    Ok(comparison)
+}
+
+// Function to run a single plugin test
+fn run_plugin_test(
+    plugin_path: &str,
+    connection: &str,
+    database: &str,
+    query: &str,
+    source_table: &str,
+    iterations: usize,
+    wasmtime_config: &WasmtimeConfig,
+) -> anyhow::Result<BenchmarkResult> {
+    // 创建引擎
+    let engine = create_wasmtime_engine(wasmtime_config)?;
+    let module = Module::from_file(&engine, plugin_path)?;
+    
+    // 创建WASI上下文 - 适用于10.0.0版本
+    let wasi = WasiCtxBuilder::new()
+        .inherit_stdio()
+        .inherit_args()?
+        .build()?;
+    
+    // 创建存储
+    let mut store = Store::new(&engine, wasi);
+    
+    // 创建链接器并添加WASI函数 - 10.0.0版本
+    let mut linker = Linker::new(&engine);
+    wasmtime_wasi::add_to_linker(&mut linker, |s| s)?;
+    
+    // 实例化模块
+    let instance = linker.instantiate(&mut store, &module)?;
+    
+    // 获取导出的函数
+    let extract = instance.get_typed_func::<i32, i32>(&mut store, "extract")?;
+    let transform = instance.get_typed_func::<i32, i32>(&mut store, "transform")?;
+    let load = instance.get_typed_func::<i32, i32>(&mut store, "load")?;
+    let get_metadata = instance.get_typed_func::<(), i32>(&mut store, "get_metadata")?;
+    
+    // 获取WebAssembly内存
+    let memory = instance.get_export(&mut store, "memory")
+        .and_then(|export| export.into_memory())
+        .ok_or_else(|| anyhow!("Failed to get WebAssembly memory"))?;
+    
+    // 获取元数据
+    let metadata_ptr = get_metadata.call(&mut store, ())?;
+    let plugin_metadata: PluginMetadata = read_from_memory(&memory, &store, metadata_ptr)?;
+    
+    // 准备测试结果
+    let test_id = Uuid::new_v4().to_string();
+    let timestamp = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    
+    // 准备基准测试结果
+    let mut extract_times = Vec::with_capacity(iterations);
+    let mut transform_times = Vec::with_capacity(iterations);
+    let mut load_times = Vec::with_capacity(iterations);
+    let mut total_time = 0;
+    let mut record_count = 0;
+    
+    // 准备提取选项
+    let extract_options = json!({
+        "connection_string": connection,
+        "database": database,
+        "query": query,
+        "table": source_table
+    });
+    
+    // 写入提取选项到内存
+    let extract_options_ptr = write_to_memory(&memory, &mut store, &extract_options)?;
+    
+    // 运行指定迭代次数
+    for i in 0..iterations {
+        // 提取阶段
+        let extract_start = Instant::now();
+        let result_ptr = extract.call(&mut store, extract_options_ptr)?;
+        let extract_time = extract_start.elapsed();
+        extract_times.push(extract_time.as_millis() as u64);
+        
+        // 读取提取结果
+        let extract_result: serde_json::Value = read_from_memory(&memory, &store, result_ptr)?;
+        let records: Vec<DataRecord> = serde_json::from_value(extract_result["records"].clone())?;
+        
+        if i == 0 {
+            record_count = records.len();
+        }
+        
+        // 转换阶段
+        let transform_start = Instant::now();
+        let transform_result_ptr = transform.call(&mut store, result_ptr)?;
+        let transform_time = transform_start.elapsed();
+        transform_times.push(transform_time.as_millis() as u64);
+        
+        // 准备加载选项
+        let loader_options = json!({
+            "connection_string": connection,
+            "database": database,
+            "table": "test_target_table"
+        });
+        
+        // 写入加载选项到内存
+        let loader_options_ptr = write_to_memory(&memory, &mut store, &loader_options)?;
+        
+        // 加载阶段
+        let load_start = Instant::now();
+        let load_result_ptr = load.call(&mut store, loader_options_ptr)?;
+        let load_time = load_start.elapsed();
+        load_times.push(load_time.as_millis() as u64);
+    }
+    
+    // 计算总时间
+    total_time = extract_times.iter().sum::<u64>() + 
+                transform_times.iter().sum::<u64>() + 
+                load_times.iter().sum::<u64>();
+    
+    // 创建基准测试结果
+    let benchmark_result = BenchmarkResult {
+        extract_time_ms: extract_times,
+        transform_time_ms: transform_times,
+        load_time_ms: load_times,
+        total_time_ms: total_time,
+        record_count,
+        plugin_metadata,
+        timestamp,
+        test_id,
+    };
+    
+    Ok(benchmark_result)
+}
+
+// Function to compare two sets of records
+fn compare_records(records1: &[DataRecord], records2: &[DataRecord]) -> bool {
+    if records1.len() != records2.len() {
+        return false;
+    }
+    
+    // Compare each record by serializing to JSON and comparing
+    for i in 0..records1.len() {
+        let json1 = serde_json::to_string(&records1[i]).unwrap_or_default();
+        let json2 = serde_json::to_string(&records2[i]).unwrap_or_default();
+        
+        if json1 != json2 {
+            return false;
+        }
+    }
+    
+    true
+}
+
+// Struct to hold results of a single plugin test
+struct SinglePluginTestResult {
+    plugin_metadata: PluginMetadata,
+    extracted_records: Vec<DataRecord>,
+    transformed_records: Vec<DataRecord>,
+    extract_time: Duration,
+    transform_time: Duration,
+    load_time: Duration,
+    total_time: Duration,
+}
+
+// Struct to hold comparison results
+#[derive(Debug)]
+struct ComparisonResult {
+    plugin1: PluginMetadata,
+    plugin2: PluginMetadata,
+    record_count1: usize,
+    record_count2: usize,
+    transform_count1: usize,
+    transform_count2: usize,
+    extract_time1: Duration,
+    extract_time2: Duration,
+    transform_time1: Duration,
+    transform_time2: Duration,
+    load_time1: Duration,
+    load_time2: Duration,
+    total_time1: Duration,
+    total_time2: Duration,
+    records_matched: bool,
+}
+
+// Function to display comparison results
+fn display_comparison(result: &ComparisonResult) {
+    let mut table = Table::new();
+    
+    // Add header
+    table.add_row(Row::from(vec![
+        Cell::new("Metric"),
+        Cell::new(&result.plugin1.name),
+        Cell::new(&result.plugin2.name),
+        Cell::new("Difference"),
+    ]));
+    
+    // Add version information
+    table.add_row(Row::from(vec![
+        Cell::new("Version"),
+        Cell::new(&result.plugin1.version),
+        Cell::new(&result.plugin2.version),
+        Cell::new("-"),
+    ]));
+    
+    // Add record counts
+    table.add_row(Row::from(vec![
+        Cell::new("Records Extracted"),
+        Cell::new(&result.record_count1.to_string()),
+        Cell::new(&result.record_count2.to_string()),
+        Cell::new(&if result.record_count1 == result.record_count2 {
+            "Same".to_string()
+        } else {
+            format!("{:+}", result.record_count2 as i64 - result.record_count1 as i64)
+        }),
+    ]));
+    
+    // Add transformed record counts
+    table.add_row(Row::from(vec![
+        Cell::new("Records Transformed"),
+        Cell::new(&result.transform_count1.to_string()),
+        Cell::new(&result.transform_count2.to_string()),
+        Cell::new(&if result.transform_count1 == result.transform_count2 {
+            "Same".to_string()
+        } else {
+            format!("{:+}", result.transform_count2 as i64 - result.transform_count1 as i64)
+        }),
+    ]));
+    
+    // Add timings
+    table.add_row(Row::from(vec![
+        Cell::new("Extract Time"),
+        Cell::new(&format!("{:.2?}", result.extract_time1)),
+        Cell::new(&format!("{:.2?}", result.extract_time2)),
+        Cell::new(&format!("{:+.1?}", 
+            result.extract_time2.as_micros() as i64 - result.extract_time1.as_micros() as i64)),
+    ]));
+    
+    table.add_row(Row::from(vec![
+        Cell::new("Transform Time"),
+        Cell::new(&format!("{:.2?}", result.transform_time1)),
+        Cell::new(&format!("{:.2?}", result.transform_time2)),
+        Cell::new(&format!("{:+.1?}", 
+            result.transform_time2.as_micros() as i64 - result.transform_time1.as_micros() as i64)),
+    ]));
+    
+    table.add_row(Row::from(vec![
+        Cell::new("Load Time"),
+        Cell::new(&format!("{:.2?}", result.load_time1)),
+        Cell::new(&format!("{:.2?}", result.load_time2)),
+        Cell::new(&format!("{:+.1?}", 
+            result.load_time2.as_micros() as i64 - result.load_time1.as_micros() as i64)),
+    ]));
+    
+    table.add_row(Row::from(vec![
+        Cell::new("Total Time"),
+        Cell::new(&format!("{:.2?}", result.total_time1)),
+        Cell::new(&format!("{:.2?}", result.total_time2)),
+        Cell::new(&format!("{:+.1?}", 
+            result.total_time2.as_micros() as i64 - result.total_time1.as_micros() as i64)),
+    ]));
+    
+    // Add data integrity check
+    table.add_row(Row::from(vec![
+        Cell::new("Data Matched"),
+        Cell::new("-"),
+        Cell::new("-"),
+        Cell::new(if result.records_matched { "Yes" } else { "No" }),
+    ]));
+    
+    // Print table
+    table.printstd();
+}
+
+// Add a struct for migration test result
+#[derive(Debug, Serialize, Deserialize)]
+struct MigrationTestResult {
+    source_schema: String,
+    target_schema: String,
+    success: bool,
+    error_message: Option<String>,
+    migration_time_ms: u64,
+    rows_migrated: u32,
+    test_id: String,
+    timestamp: String,
+}
+
+// Add a function to test schema migration capabilities
+fn test_schema_migration(
+    plugin_path: &str,
+    connection: &str,
+    database: &str,
+    source_schema_path: &str,
+    target_schema_path: &str
+) -> Result<MigrationTestResult> {
+    info!("Starting schema migration test");
+    
+    // Generate unique test ID
+    let test_id = Uuid::new_v4().to_string();
+    let timestamp = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    
+    // Read schema creation scripts
+    let source_schema = std::fs::read_to_string(source_schema_path)
+        .map_err(|e| anyhow!("Failed to read source schema script: {}", e))?;
+    
+    let target_schema = std::fs::read_to_string(target_schema_path)
+        .map_err(|e| anyhow!("Failed to read target schema script: {}", e))?;
+    
+    // Initialize WASM environment
+    let engine = Engine::default();
+    let module = Module::from_file(&engine, plugin_path)?;
+    
+    // Create a WASI context
+    let wasi = WasiCtxBuilder::new()
+        .inherit_stdio()
+        .inherit_args()?
+        .build();
+    
+    // Create a store with WASI context
+    let mut store = Store::new(&engine, wasi);
+    
+    // Create a linker with WASI functions
+    let mut linker = Linker::new(&engine);
+    wasmtime_wasi::sync::add_to_linker(&mut linker, |s| s)?;
+    
+    // Instantiate the module
+    let instance = linker.instantiate(&mut store, &module)?;
+    
+    // Get exported functions
+    let migrate = match instance.get_typed_func::<(i32, i32), i32>(&mut store, "migrate") {
+        Ok(func) => func,
+        Err(_) => {
+            return Ok(MigrationTestResult {
+                source_schema,
+                target_schema,
+                success: false,
+                error_message: Some("Plugin does not support 'migrate' function".to_string()),
+                migration_time_ms: 0,
+                rows_migrated: 0,
+                test_id,
+                timestamp,
+            });
+        }
+    };
+    
+    // Get the WebAssembly memory
+    let memory = instance.get_export(&mut store, "memory")
+        .and_then(|export| export.into_memory())
+        .ok_or_else(|| anyhow!("Failed to get WebAssembly memory"))?;
+    
+    // Prepare migration options
+    let source_options = json!({
+        "connection_string": connection,
+        "database": database,
+        "schema": source_schema,
+    });
+    
+    let target_options = json!({
+        "connection_string": connection,
+        "database": database,
+        "schema": target_schema,
+    });
+    
+    // Write options to memory
+    let source_ptr = write_to_memory(&memory, &mut store, &source_options)?;
+    let target_ptr = write_to_memory(&memory, &mut store, &target_options)?;
+    
+    // Execute migration
+    let migration_start = Instant::now();
+    let mut success = true;
+    let mut error_message = None;
+    let mut rows_migrated = 0;
+    
+    match migrate.call(&mut store, (source_ptr, target_ptr)) {
+        Ok(result_ptr) => {
+            match read_from_memory::<serde_json::Value>(&memory, &store, result_ptr) {
+                Ok(result) => {
+                    if let Some(count) = result.get("rows_migrated").and_then(|v| v.as_u64()) {
+                        rows_migrated = count as u32;
+                        info!("Migration successful: migrated {} rows", rows_migrated);
+                    } else {
+                        success = false;
+                        error_message = Some("Invalid migration result format".to_string());
+                    }
+                },
+                Err(e) => {
+                    success = false;
+                    error_message = Some(format!("Failed to parse migration result: {}", e));
+                }
+            }
+        },
+        Err(e) => {
+            success = false;
+            error_message = Some(format!("Migration function failed: {}", e));
+        }
+    }
+    
+    let migration_time = migration_start.elapsed();
+    
+    // Create and return result
+    Ok(MigrationTestResult {
+        source_schema,
+        target_schema,
+        success,
+        error_message,
+        migration_time_ms: migration_time.as_millis() as u64,
+        rows_migrated,
+        test_id,
+        timestamp,
+    })
+}
+
+// Add function to display migration test result
+fn display_migration_result(result: &MigrationTestResult) {
+    let mut table = Table::new();
+    
+    // Add header
+    table.add_row(Row::from(vec![
+        Cell::new("Migration Test Result"),
+        Cell::new("Value"),
+    ]));
+    
+    // Add rows
+    table.add_row(Row::from(vec![
+        Cell::new("Status"),
+        Cell::new(if result.success { "Success" } else { "Failed" }),
+    ]));
+    
+    if let Some(error) = &result.error_message {
+        table.add_row(Row::from(vec![
+            Cell::new("Error"),
+            Cell::new(error),
+        ]));
+    }
+    
+    table.add_row(Row::from(vec![
+        Cell::new("Migration Time"),
+        Cell::new(&format!("{} ms", result.migration_time_ms)),
+    ]));
+    
+    table.add_row(Row::from(vec![
+        Cell::new("Rows Migrated"),
+        Cell::new(&result.rows_migrated.to_string()),
+    ]));
+    
+    table.add_row(Row::from(vec![
+        Cell::new("Test ID"),
+        Cell::new(&result.test_id),
+    ]));
+    
+    table.add_row(Row::from(vec![
+        Cell::new("Timestamp"),
+        Cell::new(&result.timestamp),
+    ]));
+    
+    // Print table
+    table.printstd();
+}
+
+fn main() -> anyhow::Result<()> {
+    // 初始化日志
+    env_logger::init();
+    
+    // 解析命令行参数
+    let args = Args::parse();
+    
+    // 设置全局堆起始位置
+    HEAP_END.store(args.heap_start, Ordering::SeqCst);
+    
+    // 创建Wasmtime配置
+    let wasmtime_config = WasmtimeConfig {
+        fuel_enabled: args.fuel_enabled,
+        fuel_limit: args.fuel_limit,
+        native_unwind_info: args.native_unwind_info,
+        debug_info: args.debug_info,
+        reference_types: args.reference_types,
+        simd: args.simd,
+        multi_memory: args.multi_memory,
+        threads: args.threads,
+        memory64: args.memory64,
+        bulk_memory: args.bulk_memory,
+        cranelift_opt_level: match args.optimization_level.as_str() {
+            "none" => OptLevel::None,
+            "speed" => OptLevel::Speed,
+            "speed_and_size" => OptLevel::SpeedAndSize,
+            _ => OptLevel::Speed,
+        },
+        compilation_mode: match args.compilation_mode.as_str() {
+            "eager" => CompilationMode::Eager,
+            "lazy" => CompilationMode::Lazy,
+            _ => CompilationMode::Eager,
+        },
+        strategy: match args.strategy.as_str() {
+            "cranelift" => Strategy::Cranelift,
+            "auto" => Strategy::Auto,
+            _ => Strategy::Auto,
+        },
+    };
+    
+    // 如果指定了比较模式，执行插件比较
+    if let Some(ref compare_plugin) = args.compare {
+        // 执行比较
+        let base_results = run_plugin_test(
+            &args.plugin,
+            &args.connection,
+            &args.database,
+            &args.query,
+            &args.table,
+            args.iterations,
+            &wasmtime_config,
+        )?;
+        
+        let compare_results = run_plugin_test(
+            compare_plugin,
+            &args.connection,
+            &args.database,
+            &args.query,
+            &args.table,
+            args.iterations,
+            &wasmtime_config,
+        )?;
+        
+        // 比较结果
+        compare_and_display_results(&base_results, &compare_results);
+        
+        // 如果需要导出CSV
+        if args.export_csv {
+            // 确保目录存在
+            let export_dir = "benchmark_results";
+            if !std::path::Path::new(export_dir).exists() {
+                std::fs::create_dir_all(export_dir)?;
+            }
+            
+            // 导出基准结果
+            let base_filename = format!(
+                "{}/{}_{}.csv",
+                export_dir,
+                base_results.plugin_metadata.name.replace(" ", "_"),
+                base_results.test_id
+            );
+            export_to_csv(&base_results, &base_filename)?;
+            
+            // 导出比较结果
+            let compare_filename = format!(
+                "{}/{}_{}.csv",
+                export_dir,
+                compare_results.plugin_metadata.name.replace(" ", "_"),
+                compare_results.test_id
+            );
+            export_to_csv(&compare_results, &compare_filename)?;
+            
+            println!("Results exported to {} and {}", base_filename, compare_filename);
+        }
+    } else {
+        // 常规模式 - 运行单个插件测试
+        let results = run_plugin_test(
+            &args.plugin,
+            &args.connection,
+            &args.database,
+            &args.query,
+            &args.table,
+            args.iterations,
+            &wasmtime_config,
+        )?;
+        
+        // 显示结果
+        display_results(&results);
+        
+        // 应用过滤器（如果指定）
+        if let Some(ref filter_field) = args.filter_field {
+            if let Some(ref filter_value) = args.filter_value {
+                let filtered_results = filter_records(&results, filter_field, filter_value);
+                display_records(&filtered_results);
+            }
+        }
+        
+        // 如果需要导出CSV
+        if args.export_csv {
+            // 确保目录存在
+            let export_dir = "benchmark_results";
+            if !std::path::Path::new(export_dir).exists() {
+                std::fs::create_dir_all(export_dir)?;
+            }
+            
+            // 导出结果
+            let filename = format!(
+                "{}/{}_{}.csv",
+                export_dir,
+                results.plugin_metadata.name.replace(" ", "_"),
+                results.test_id
+            );
+            export_to_csv(&results, &filename)?;
+            
+            println!("Results exported to {}", filename);
+        }
+    }
+    
+    Ok(())
+}
+
+// Helper functions for memory management
+fn read_from_memory<T: DeserializeOwned>(
+    memory: &Memory,
+    store: &Store<WasiCtx>,
+    ptr: i32,
+) -> anyhow::Result<T> {
+    // 读取指针位置的长度（32位整数）
+    let len_ptr = ptr as usize;
+    let data = memory.data(store);
+    
+    if len_ptr + 4 > data.len() {
+        return Err(anyhow!("Memory access out of bounds"));
+    }
+    
+    // 读取长度（4字节）
+    let mut len_bytes = [0u8; 4];
+    len_bytes.copy_from_slice(&data[len_ptr..len_ptr + 4]);
+    let len = u32::from_le_bytes(len_bytes) as usize;
+    
+    // 读取数据
+    let data_ptr = len_ptr + 4;
+    if data_ptr + len > data.len() {
+        return Err(anyhow!("Memory access out of bounds for data"));
+    }
+    
+    // 反序列化
+    let json_str = std::str::from_utf8(&data[data_ptr..data_ptr + len])?;
+    let result: T = serde_json::from_str(json_str)?;
+    
+    Ok(result)
+}
+
+fn write_to_memory<T: Serialize>(
+    memory: &Memory,
+    store: &mut Store<WasiCtx>,
+    value: &T,
+) -> anyhow::Result<i32> {
+    // 序列化值
+    let json_str = serde_json::to_string(value)?;
+    let buffer = json_str.as_bytes();
+    
+    // 计算所需内存大小：长度(4字节) + 数据
+    let total_size = 4 + buffer.len();
+    
+    // 分配内存（如果需要）
+    let current_pages = memory.size(store);
+    let memory_size = current_pages as usize * 65536; // 64KB页
+    
+    let current_heap_end = HEAP_END.load(Ordering::SeqCst);
+    if current_heap_end + total_size > memory_size {
+        let additional_bytes_needed = current_heap_end + total_size - memory_size;
+        let additional_pages = (additional_bytes_needed + 65535) / 65536; // 向上取整到页
+        memory.grow(store, additional_pages as u64)?;
+    }
+    
+    // 分配内存区域
+    let offset = HEAP_END.fetch_add(total_size, Ordering::SeqCst);
+    let offset_usize = offset as usize;
+    
+    // 写入长度（4字节）
+    let len_bytes = (buffer.len() as u32).to_le_bytes();
+    memory.data_mut(store)[offset_usize..offset_usize + 4].copy_from_slice(&len_bytes);
+    
+    // 写入数据
+    memory.data_mut(store)[offset_usize + 4..offset_usize + 4 + buffer.len()].copy_from_slice(buffer);
+    
+    Ok(offset as i32)
+}
+
+// Function to export benchmark results to CSV
+fn export_to_csv(results: &BenchmarkResult, path: &str) -> Result<()> {
+    // Create output directory if it doesn't exist
+    if let Some(parent) = Path::new(path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    
+    // Create CSV writer
+    let mut writer = CsvWriter::from_path(path)?;
+    
+    // Write header
+    writer.write_record(&[
+        "Iteration", 
+        "Extract Time (ms)", 
+        "Transform Time (ms)", 
+        "Load Time (ms)",
+        "Total Time (ms)",
+    ])?;
+    
+    // Write data for each iteration
+    let iterations = results.extract_time_ms.len();
+    for i in 0..iterations {
+        let extract = if i < results.extract_time_ms.len() { 
+            results.extract_time_ms[i].to_string() 
+        } else { 
+            "0".to_string() 
+        };
+        
+        let transform = if i < results.transform_time_ms.len() { 
+            results.transform_time_ms[i].to_string() 
+        } else { 
+            "0".to_string() 
+        };
+        
+        let load = if i < results.load_time_ms.len() { 
+            results.load_time_ms[i].to_string() 
+        } else { 
+            "0".to_string() 
+        };
+        
+        writer.write_record(&[
+            (i + 1).to_string(),
+            extract,
+            transform,
+            load,
+            (results.extract_time_ms.get(i).unwrap_or(&0) + 
+             results.transform_time_ms.get(i).unwrap_or(&0) + 
+             results.load_time_ms.get(i).unwrap_or(&0)).to_string(),
+        ])?;
+    }
+    
+    // Write summary row
+    let avg_extract = if !results.extract_time_ms.is_empty() {
+        results.extract_time_ms.iter().sum::<u64>() as f64 / results.extract_time_ms.len() as f64
+    } else {
+        0.0
+    };
+    
+    let avg_transform = if !results.transform_time_ms.is_empty() {
+        results.transform_time_ms.iter().sum::<u64>() as f64 / results.transform_time_ms.len() as f64
+    } else {
+        0.0
+    };
+    
+    let avg_load = if !results.load_time_ms.is_empty() {
+        results.load_time_ms.iter().sum::<u64>() as f64 / results.load_time_ms.len() as f64
+    } else {
+        0.0
+    };
+    
+    writer.write_record(&[
+        "Average".to_string(),
+        format!("{:.2}", avg_extract),
+        format!("{:.2}", avg_transform),
+        format!("{:.2}", avg_load),
+        format!("{:.2}", avg_extract + avg_transform + avg_load),
+    ])?;
+    
+    // Write metadata
+    writer.write_record(&["", "", "", "", ""])?;
+    writer.write_record(&["Metadata", "", "", "", ""])?;
+    writer.write_record(&["Plugin Name", &results.plugin_metadata.name, "", "", ""])?;
+    writer.write_record(&["Plugin Version", &results.plugin_metadata.version, "", "", ""])?;
+    writer.write_record(&["Plugin Type", &results.plugin_metadata.plugin_type, "", "", ""])?;
+    writer.write_record(&["Record Count", &results.record_count.to_string(), "", "", ""])?;
+    writer.write_record(&["Test ID", &results.test_id, "", "", ""])?;
+    writer.write_record(&["Timestamp", &results.timestamp, "", "", ""])?;
+    
+    // Flush and close the writer
+    writer.flush()?;
+    
+    Ok(())
+}
+
+// Function to filter records based on field value
+fn filter_records(records: &[DataRecord], filter: &str) -> Vec<DataRecord> {
+    // Parse filter string (format: field=value)
+    let parts: Vec<&str> = filter.split('=').collect();
+    if parts.len() != 2 {
+        warn!("Invalid filter format, expected 'field=value'. Using all records.");
+        return records.to_vec();
+    }
+    
+    let field_name = parts[0].trim();
+    let field_value = parts[1].trim();
+    
+    // Filter records
+    records.iter()
+        .filter(|record| {
+            // Check in the fields map
+            if let Some(value) = record.fields.get(field_name) {
+                return value == field_value;
+            }
+            
+            // Check in the base properties
+            match field_name {
+                "id" => record.id == field_value,
+                "source" => record.source == field_value,
+                "timestamp" => record.timestamp == field_value,
+                _ => false,
+            }
+        })
+        .cloned()
+        .collect()
+}
+
+// Function to display records in a table format
+fn display_records(records: &[DataRecord], limit: usize) {
+    if records.is_empty() {
+        info!("No records to display");
+        return;
+    }
+    
+    // Create a new table
+    let mut table = Table::new();
+    
+    // Add header row
+    let mut header = vec!["ID", "Source", "Timestamp"];
+    
+    // Add fields from the first record to determine columns
+    let field_names: Vec<&String> = if !records.is_empty() {
+        records[0].fields.keys().collect()
+    } else {
+        Vec::new()
+    };
+    
+    // Add field names to header
+    for field in &field_names {
+        header.push(field);
+    }
+    
+    // Add header row to table
+    table.add_row(Row::from(header.iter().map(|h| Cell::new(h)).collect::<Vec<_>>()));
+    
+    // Add data rows
+    let display_count = std::cmp::min(limit, records.len());
+    for record in records.iter().take(display_count) {
+        let mut row = vec![
+            Cell::new(&record.id),
+            Cell::new(&record.source),
+            Cell::new(&record.timestamp),
+        ];
+        
+        // Add fields in the same order as the header
+        for field_name in &field_names {
+            let empty_string = "".to_string();
+            let value = record.fields.get(*field_name).unwrap_or(&empty_string);
+            row.push(Cell::new(value));
+        }
+        
+        table.add_row(Row::from(row));
+    }
+    
+    // Print table
+    table.printstd();
+    
+    // Show record count
+    if records.len() > display_count {
+        info!("Showing {} of {} records", display_count, records.len());
+    }
+}
+
+// Add this function to save comparison results
+fn save_comparison_results(result: &ComparisonResult) -> Result<()> {
+    let results_dir = "./test_results";
+    create_dir_all(results_dir)?;
+    
+    let unique_id = Uuid::new_v4();
+    let timestamp = Utc::now();
+    
+    let filename = format!("{}/comparison_{}.json", results_dir, unique_id);
+    let file = File::create(&filename)?;
+    let mut writer = BufWriter::new(file);
+    
+    let json_result = json!({
+        "plugin1": {
+            "name": result.plugin1.name,
+            "version": result.plugin1.version,
+            "description": result.plugin1.description,
+            "type": result.plugin1.plugin_type,
+        },
+        "plugin2": {
+            "name": result.plugin2.name,
+            "version": result.plugin2.version,
+            "description": result.plugin2.description,
+            "type": result.plugin2.plugin_type,
+        },
+        "performance": {
+            "plugin1": {
+                "extract_time_ms": result.extract_time1.as_micros() as f64 / 1000.0,
+                "transform_time_ms": result.transform_time1.as_micros() as f64 / 1000.0,
+                "load_time_ms": result.load_time1.as_micros() as f64 / 1000.0,
+                "total_time_ms": result.total_time1.as_micros() as f64 / 1000.0,
+            },
+            "plugin2": {
+                "extract_time_ms": result.extract_time2.as_micros() as f64 / 1000.0,
+                "transform_time_ms": result.transform_time2.as_micros() as f64 / 1000.0,
+                "load_time_ms": result.load_time2.as_micros() as f64 / 1000.0,
+                "total_time_ms": result.total_time2.as_micros() as f64 / 1000.0,
+            },
+            "difference": {
+                "extract_time_ms": (result.extract_time2.as_micros() as i64 - result.extract_time1.as_micros() as i64) as f64 / 1000.0,
+                "transform_time_ms": (result.transform_time2.as_micros() as i64 - result.transform_time1.as_micros() as i64) as f64 / 1000.0,
+                "load_time_ms": (result.load_time2.as_micros() as i64 - result.load_time1.as_micros() as i64) as f64 / 1000.0,
+                "total_time_ms": (result.total_time2.as_micros() as i64 - result.total_time1.as_micros() as i64) as f64 / 1000.0,
+            }
+        },
+        "records": {
+            "plugin1_count": result.record_count1,
+            "plugin2_count": result.record_count2,
+            "matched": result.records_matched,
+        },
+        "meta": {
+            "id": unique_id.to_string(),
+            "timestamp": timestamp.to_rfc3339(),
+        }
+    });
+    
+    serde_json::to_writer_pretty(&mut writer, &json_result)?;
+    writer.flush()?;
+    
+    info!("Comparison results saved to: {}", filename);
+    Ok(())
+}
+
+// Function to generate HTML report from benchmark results
+fn generate_html_report(results: &BenchmarkResult, path: &str) -> Result<()> {
+    // Create output directory if it doesn't exist
+    if let Some(parent) = Path::new(path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    
+    // Initialize Handlebars
+    let mut handlebars = Handlebars::new();
+    register_handlebars_helpers(&mut handlebars)?;
+    
+    // Register template
+    handlebars.register_template_string("report", include_str!("../templates/report.hbs"))?;
+    
+    // Prepare data for template
+    let avg_extract = if !results.extract_time_ms.is_empty() {
+        results.extract_time_ms.iter().sum::<u64>() as f64 / results.extract_time_ms.len() as f64
+    } else {
+        0.0
+    };
+    
+    let avg_transform = if !results.transform_time_ms.is_empty() {
+        results.transform_time_ms.iter().sum::<u64>() as f64 / results.transform_time_ms.len() as f64
+    } else {
+        0.0
+    };
+    
+    let avg_load = if !results.load_time_ms.is_empty() {
+        results.load_time_ms.iter().sum::<u64>() as f64 / results.load_time_ms.len() as f64
+    } else {
+        0.0
+    };
+    
+    // Calculate min, max, and median values for each operation
+    let mut sorted_extract = results.extract_time_ms.clone();
+    let mut sorted_transform = results.transform_time_ms.clone();
+    let mut sorted_load = results.load_time_ms.clone();
+    
+    sorted_extract.sort();
+    sorted_transform.sort();
+    sorted_load.sort();
+    
+    let min_extract = sorted_extract.first().unwrap_or(&0);
+    let max_extract = sorted_extract.last().unwrap_or(&0);
+    let median_extract = if !sorted_extract.is_empty() {
+        sorted_extract[sorted_extract.len() / 2]
+    } else {
+        0
+    };
+    
+    let min_transform = sorted_transform.first().unwrap_or(&0);
+    let max_transform = sorted_transform.last().unwrap_or(&0);
+    let median_transform = if !sorted_transform.is_empty() {
+        sorted_transform[sorted_transform.len() / 2]
+    } else {
+        0
+    };
+    
+    let min_load = sorted_load.first().unwrap_or(&0);
+    let max_load = sorted_load.last().unwrap_or(&0);
+    let median_load = if !sorted_load.is_empty() {
+        sorted_load[sorted_load.len() / 2]
+    } else {
+        0
+    };
+    
+    // Prepare iteration data
+    let mut iterations = Vec::new();
+    let iter_count = results.extract_time_ms.len();
+    
+    for i in 0..iter_count {
+        let extract = results.extract_time_ms.get(i).unwrap_or(&0);
+        let transform = results.transform_time_ms.get(i).unwrap_or(&0);
+        let load = results.load_time_ms.get(i).unwrap_or(&0);
+        let total = extract + transform + load;
+        
+        iterations.push(json!({
+            "number": i + 1,
+            "extract": extract,
+            "transform": transform,
+            "load": load,
+            "total": total,
+        }));
+    }
+    
+    // Create data object for template
+    let data = json!({
+        "plugin": {
+            "name": results.plugin_metadata.name,
+            "version": results.plugin_metadata.version,
+            "description": results.plugin_metadata.description,
+            "type": results.plugin_metadata.plugin_type,
+        },
+        "test": {
+            "id": results.test_id,
+            "timestamp": results.timestamp,
+            "record_count": results.record_count,
+            "iterations": iter_count,
+            "total_time_ms": results.total_time_ms,
+        },
+        "averages": {
+            "extract": format!("{:.2}", avg_extract),
+            "transform": format!("{:.2}", avg_transform),
+            "load": format!("{:.2}", avg_load),
+            "total": format!("{:.2}", avg_extract + avg_transform + avg_load),
+        },
+        "stats": {
+            "extract": {
+                "min": min_extract,
+                "max": max_extract,
+                "median": median_extract,
+            },
+            "transform": {
+                "min": min_transform,
+                "max": max_transform,
+                "median": median_transform,
+            },
+            "load": {
+                "min": min_load,
+                "max": max_load,
+                "median": median_load,
+            }
+        },
+        "iterations": iterations,
+        "extract_data": results.extract_time_ms,
+        "transform_data": results.transform_time_ms,
+        "load_data": results.load_time_ms,
+    });
+    
+    // Render template
+    let rendered = handlebars.render("report", &data)?;
+    
+    // Write to file
+    let mut file = File::create(path)?;
+    file.write_all(rendered.as_bytes())?;
+    
+    info!("HTML report generated at: {}", path);
+    Ok(())
+}
+
+// Function to generate HTML report for comparison results
+fn generate_comparison_html_report(result: &ComparisonResult, path: &str) -> Result<()> {
+    // Create output directory if it doesn't exist
+    if let Some(parent) = Path::new(path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    
+    // Initialize Handlebars
+    let mut handlebars = Handlebars::new();
+    register_handlebars_helpers(&mut handlebars)?;
+    
+    // Register template
+    handlebars.register_template_string("comparison", include_str!("../templates/comparison.hbs"))?;
+    
+    // Calculate percentage differences
+    let extract_diff_pct = if result.extract_time1.as_micros() > 0 {
+        (result.extract_time2.as_micros() as f64 - result.extract_time1.as_micros() as f64) * 100.0 / result.extract_time1.as_micros() as f64
+    } else {
+        0.0
+    };
+    
+    let transform_diff_pct = if result.transform_time1.as_micros() > 0 {
+        (result.transform_time2.as_micros() as f64 - result.transform_time1.as_micros() as f64) * 100.0 / result.transform_time1.as_micros() as f64
+    } else {
+        0.0
+    };
+    
+    let load_diff_pct = if result.load_time1.as_micros() > 0 {
+        (result.load_time2.as_micros() as f64 - result.load_time1.as_micros() as f64) * 100.0 / result.load_time1.as_micros() as f64
+    } else {
+        0.0
+    };
+    
+    let total_diff_pct = if result.total_time1.as_micros() > 0 {
+        (result.total_time2.as_micros() as f64 - result.total_time1.as_micros() as f64) * 100.0 / result.total_time1.as_micros() as f64
+    } else {
+        0.0
+    };
+    
+    // Create data object for template
+    let data = json!({
+        "plugin1": {
+            "name": result.plugin1.name,
+            "version": result.plugin1.version,
+            "description": result.plugin1.description,
+            "type": result.plugin1.plugin_type,
+        },
+        "plugin2": {
+            "name": result.plugin2.name,
+            "version": result.plugin2.version,
+            "description": result.plugin2.description,
+            "type": result.plugin2.plugin_type,
+        },
+        "records": {
+            "count1": result.record_count1,
+            "count2": result.record_count2,
+            "matched": result.records_matched,
+            "diff": result.record_count2 as i64 - result.record_count1 as i64,
+        },
+        "transform": {
+            "count1": result.transform_count1,
+            "count2": result.transform_count2,
+            "diff": result.transform_count2 as i64 - result.transform_count1 as i64,
+        },
+        "performance": {
+            "extract1": format!("{:.3}", result.extract_time1.as_micros() as f64 / 1000.0),
+            "extract2": format!("{:.3}", result.extract_time2.as_micros() as f64 / 1000.0),
+            "extract_diff": format!("{:+.3}", (result.extract_time2.as_micros() as i64 - result.extract_time1.as_micros() as i64) as f64 / 1000.0),
+            "extract_diff_pct": format!("{:+.2}%", extract_diff_pct),
+            
+            "transform1": format!("{:.3}", result.transform_time1.as_micros() as f64 / 1000.0),
+            "transform2": format!("{:.3}", result.transform_time2.as_micros() as f64 / 1000.0),
+            "transform_diff": format!("{:+.3}", (result.transform_time2.as_micros() as i64 - result.transform_time1.as_micros() as i64) as f64 / 1000.0),
+            "transform_diff_pct": format!("{:+.2}%", transform_diff_pct),
+            
+            "load1": format!("{:.3}", result.load_time1.as_micros() as f64 / 1000.0),
+            "load2": format!("{:.3}", result.load_time2.as_micros() as f64 / 1000.0),
+            "load_diff": format!("{:+.3}", (result.load_time2.as_micros() as i64 - result.load_time1.as_micros() as i64) as f64 / 1000.0),
+            "load_diff_pct": format!("{:+.2}%", load_diff_pct),
+            
+            "total1": format!("{:.3}", result.total_time1.as_micros() as f64 / 1000.0),
+            "total2": format!("{:.3}", result.total_time2.as_micros() as f64 / 1000.0),
+            "total_diff": format!("{:+.3}", (result.total_time2.as_micros() as i64 - result.total_time1.as_micros() as i64) as f64 / 1000.0),
+            "total_diff_pct": format!("{:+.2}%", total_diff_pct),
+        },
+        "timestamp": Utc::now().to_rfc3339(),
+        "id": Uuid::new_v4().to_string(),
+    });
+    
+    // Render template
+    let rendered = handlebars.render("comparison", &data)?;
+    
+    // Write to file
+    let mut file = File::create(path)?;
+    file.write_all(rendered.as_bytes())?;
+    
+    info!("HTML comparison report generated at: {}", path);
+    Ok(())
+}
+
+// Add this before main function
+fn register_handlebars_helpers(handlebars: &mut Handlebars) -> Result<()> {
+    // Register helper for equality comparison
+    handlebars.register_helper(
+        "eq",
+        Box::new(
+            |h: &handlebars::Helper,
+             _: &handlebars::Handlebars,
+             _: &handlebars::Context,
+             _: &mut handlebars::RenderContext,
+             out: &mut dyn handlebars::Output|
+             -> handlebars::HelperResult {
+                let param1 = h
+                    .param(0)
+                    .ok_or_else(|| handlebars::RenderError::new("Missing parameter 1"))?
+                    .value();
+                let param2 = h
+                    .param(1)
+                    .ok_or_else(|| handlebars::RenderError::new("Missing parameter 2"))?
+                    .value();
+
+                out.write(if param1 == param2 { "true" } else { "false" })?;
+                Ok(())
+            },
+        ),
+    );
+
+    // Register helper for greater than comparison
+    handlebars.register_helper(
+        "gt",
+        Box::new(
+            |h: &handlebars::Helper,
+             _: &handlebars::Handlebars,
+             _: &handlebars::Context,
+             _: &mut handlebars::RenderContext,
+             out: &mut dyn handlebars::Output|
+             -> handlebars::HelperResult {
+                let param1 = h
+                    .param(0)
+                    .ok_or_else(|| handlebars::RenderError::new("Missing parameter 1"))?
+                    .value();
+                let param2 = h
+                    .param(1)
+                    .ok_or_else(|| handlebars::RenderError::new("Missing parameter 2"))?
+                    .value();
+
+                // Convert to f64 for numeric comparison
+                let p1_num = serde_json::to_string(&param1)?.parse::<f64>().unwrap_or(0.0);
+                let p2_num = serde_json::to_string(&param2)?.parse::<f64>().unwrap_or(0.0);
+
+                out.write(if p1_num > p2_num { "true" } else { "false" })?;
+                Ok(())
+            },
+        ),
+    );
+
+    // Register helper for JSON serialization
+    handlebars.register_helper(
+        "json",
+        Box::new(
+            |h: &handlebars::Helper,
+             _: &handlebars::Handlebars,
+             _: &handlebars::Context,
+             _: &mut handlebars::RenderContext,
+             out: &mut dyn handlebars::Output|
+             -> handlebars::HelperResult {
+                let param = h
+                    .param(0)
+                    .ok_or_else(|| handlebars::RenderError::new("Missing parameter"))?
+                    .value();
+
+                let json_str = serde_json::to_string(&param)
+                    .map_err(|e| handlebars::RenderError::new(format!("JSON serialization error: {}", e)))?;
+
+                out.write(&json_str)?;
+                Ok(())
+            },
+        ),
+    );
+
+    // Register helper for creating chart data
+    handlebars.register_helper(
+        "chart_data",
+        Box::new(
+            |h: &handlebars::Helper,
+             _: &handlebars::Handlebars,
+             ctx: &handlebars::Context,
+             _: &mut handlebars::RenderContext,
+             out: &mut dyn handlebars::Output|
+             -> handlebars::HelperResult {
+                let param = h
+                    .param(0)
+                    .ok_or_else(|| handlebars::RenderError::new("Missing parameter"))?
+                    .value();
+
+                // Get the data array from the context
+                let data_array = param.as_array()
+                    .ok_or_else(|| handlebars::RenderError::new("Parameter is not an array"))?;
+
+                // Convert to Vec<u64>
+                let mut data_vec = Vec::with_capacity(data_array.len());
+                for value in data_array {
+                    if let Some(num) = value.as_u64() {
+                        data_vec.push(num);
+                    }
+                }
+
+                // Get configured bucket count
+                let bucket_count = unsafe { HISTOGRAM_BUCKETS };
+                
+                // Generate histogram data with configured bucket count
+                let histogram = generate_histogram_data(&data_vec, bucket_count);
+                
+                // Format as JavaScript arrays for labels and data
+                let labels: Vec<String> = histogram.iter()
+                    .map(|(label, _)| format!("'{}'", label))
+                    .collect();
+                
+                let data: Vec<String> = histogram.iter()
+                    .map(|(_, count)| count.to_string())
+                    .collect();
+
+                let js_data = format!(
+                    "{{ labels: [{}], data: [{}] }}", 
+                    labels.join(", "), 
+                    data.join(", ")
+                );
+
+                out.write(&js_data)?;
+                Ok(())
+            },
+        ),
+    );
+
+    Ok(())
+}
+
+// Function to generate histogram data for benchmark visualization
+fn generate_histogram_data(times: &[u64], bucket_count: usize) -> Vec<(String, usize)> {
+    if times.is_empty() || bucket_count == 0 {
+        return Vec::new();
+    }
+    
+    // Find min and max values
+    let min_val = *times.iter().min().unwrap_or(&0);
+    let max_val = *times.iter().max().unwrap_or(&0);
+    
+    if min_val == max_val {
+        return vec![(format!("{}", min_val), times.len())];
+    }
+    
+    // Calculate bucket size
+    let range = max_val - min_val;
+    let bucket_size = (range as f64 / bucket_count as f64).ceil() as u64;
+    
+    // Initialize buckets
+    let mut buckets = vec![0; bucket_count];
+    
+    // Fill buckets
+    for &time in times {
+        let bucket_index = if range == 0 {
+            0
+        } else {
+            (((time - min_val) as f64 / range as f64) * (bucket_count - 1) as f64).round() as usize
+        };
+        buckets[bucket_index.min(bucket_count - 1)] += 1;
+    }
+    
+    // Generate labels and data
+    let mut result = Vec::with_capacity(bucket_count);
+    for i in 0..bucket_count {
+        let lower_bound = min_val + (i as u64 * bucket_size);
+        let upper_bound = min_val + ((i + 1) as u64 * bucket_size);
+        let label = if i == bucket_count - 1 {
+            format!("{}-{}", lower_bound, max_val)
+        } else {
+            format!("{}-{}", lower_bound, upper_bound)
+        };
+        result.push((label, buckets[i]));
+    }
+    
+    result
+}
+
+/// 从TOML配置文件加载Wasmtime配置
+fn load_wasmtime_config(config_path: &str) -> Result<WasmtimeConfig> {
+    info!("从配置文件加载Wasmtime设置: {}", config_path);
+    
+    let config = fs::read_to_string(config_path)
+        .map_err(|e| anyhow!("无法读取配置文件: {}", e))?;
+    
+    let toml_value: TomlValue = toml::from_str(&config)
+        .map_err(|e| anyhow!("无法解析TOML: {}", e))?;
+    
+    let mut wasmtime_config = WasmtimeConfig::default();
+    
+    if let Some(table) = toml_value.get("wasmtime").and_then(|v| v.as_table()) {
+        if let Some(v) = table.get("memory64").and_then(|v| v.as_bool()) {
+            wasmtime_config.memory64_enabled = v;
+        }
+        
+        if let Some(v) = table.get("simd").and_then(|v| v.as_bool()) {
+            wasmtime_config.simd_enabled = v;
+        }
+        
+        if let Some(v) = table.get("extended_const").and_then(|v| v.as_bool()) {
+            wasmtime_config.extended_const_enabled = v;
+        }
+        
+        if let Some(v) = table.get("threads").and_then(|v| v.as_bool()) {
+            wasmtime_config.threads_enabled = v;
+        }
+        
+        if let Some(v) = table.get("use_interpreter").and_then(|v| v.as_bool()) {
+            wasmtime_config.use_interpreter = v;
+        }
+        
+        if let Some(v) = table.get("compilation_mode").and_then(|v| v.as_str()) {
+            wasmtime_config.compilation_mode = v.to_string();
+        }
+        
+        if let Some(v) = table.get("optimization_level").and_then(|v| v.as_str()) {
+            wasmtime_config.optimization_level = v.to_string();
+        }
+        
+        if let Some(v) = table.get("cranelift_opt_level").and_then(|v| v.as_integer()) {
+            if v >= 0 && v <= 2 {
+                wasmtime_config.cranelift_opt_level = v as u8;
+            }
+        }
+        
+        if let Some(v) = table.get("inline_stack_probes").and_then(|v| v.as_bool()) {
+            wasmtime_config.inline_stack_probes = v;
+        }
+    }
+    
+    Ok(wasmtime_config)
+}
+
+/// 根据配置创建Wasmtime引擎
+fn create_wasmtime_engine(wasmtime_config: &WasmtimeConfig) -> anyhow::Result<Engine> {
+    let mut config = Config::new();
+    
+    // 设置各种功能
+    config.wasm_simd(wasmtime_config.simd);
+    config.wasm_bulk_memory(wasmtime_config.bulk_memory);
+    config.wasm_reference_types(wasmtime_config.reference_types);
+    config.wasm_multi_memory(wasmtime_config.multi_memory);
+    config.wasm_threads(wasmtime_config.threads);
+    config.wasm_memory64(wasmtime_config.memory64);
+    
+    // 设置编译配置
+    config.cranelift_opt_level(wasmtime_config.cranelift_opt_level);
+    match wasmtime_config.strategy {
+        Strategy::Auto => {
+            config.strategy(wasmtime::Strategy::Auto)?;
+        },
+        Strategy::Cranelift => {
+            config.strategy(wasmtime::Strategy::Cranelift)?;
+        },
+    }
+    
+    // 设置调试信息
+    config.debug_info(wasmtime_config.debug_info);
+    
+    // 设置编译模式
+    match wasmtime_config.compilation_mode {
+        CompilationMode::Eager => {
+            config.cranelift_debug_verifier(true);
+            config.dynamic_memory_guard(true);
+        },
+        CompilationMode::Lazy => {
+            // Lazy模式下的额外设置
+        },
+    }
+    
+    // 设置燃料限制
+    if wasmtime_config.fuel_enabled {
+        config.consume_fuel(true);
+    }
+    
+    // 创建引擎
+    let engine = Engine::new(&config)?;
+    
+    Ok(engine)
+}
+
+// WasiCtxBuilder中的build
+fn create_wasi_context() -> Result<WasiCtx> {
+    // 使用适用于10.0.0版本的API
+    let wasi = WasiCtxBuilder::new()
+        .inherit_stdio()
+        .inherit_args()?
+        .build()?;
+    Ok(wasi)
+}
+
+// 修正WASI linker设置
+fn setup_wasi_for_linker(linker: &mut Linker<WasiCtx>) -> Result<()> {
+    wasmtime_wasi::add_to_linker_async(linker, |cx| cx)?;
+    Ok(())
+}
+
+// 定义优化配置文件相关函数
+fn load_optimization_profiles(path: &str) -> anyhow::Result<BTreeMap<String, WasmtimeConfig>> {
+    let mut profiles = BTreeMap::new();
+    
+    let config_file = std::fs::read_to_string(path)?;
+    let toml_value: toml::Value = toml::from_str(&config_file)?;
+    
+    if let Some(toml::Value::Table(profile_table)) = toml_value.get("profiles") {
+        for (profile_name, profile_data) in profile_table {
+            if let Some(toml::Value::Table(config_data)) = profile_data.as_table() {
+                let mut config = WasmtimeConfig::default();
+                
+                if let Some(memory64) = config_data.get("memory64").and_then(|v| v.as_bool()) {
+                    config.memory64_enabled = memory64;
+                }
+                
+                if let Some(simd) = config_data.get("simd").and_then(|v| v.as_bool()) {
+                    config.simd_enabled = simd;
+                }
+                
+                if let Some(extended_const) = config_data.get("extended_const").and_then(|v| v.as_bool()) {
+                    config.extended_const_enabled = extended_const;
+                }
+                
+                if let Some(threads) = config_data.get("threads").and_then(|v| v.as_bool()) {
+                    config.threads_enabled = threads;
+                }
+                
+                if let Some(interpreter) = config_data.get("interpreter").and_then(|v| v.as_bool()) {
+                    config.use_interpreter = interpreter;
+                }
+                
+                if let Some(compilation_mode) = config_data.get("compilation_mode").and_then(|v| v.as_str()) {
+                    config.compilation_mode = compilation_mode.to_string();
+                }
+                
+                if let Some(optimization_level) = config_data.get("optimization_level").and_then(|v| v.as_str()) {
+                    match optimization_level {
+                        "none" => config.optimization_level = "none".to_string(),
+                        "speed" => config.optimization_level = "speed".to_string(),
+                        "size" => config.optimization_level = "size".to_string(),
+                        _ => config.optimization_level = "speed".to_string(),
+                    }
+                }
+                
+                profiles.insert(profile_name.clone(), config);
+            }
+        }
+    }
+    
+    Ok(profiles)
+}
+
+fn get_predefined_optimization_profiles() -> BTreeMap<String, WasmtimeConfig> {
+    let mut profiles = BTreeMap::new();
+    
+    // Default profile
+    let default_config = WasmtimeConfig::default();
+    profiles.insert("default".to_string(), default_config);
+    
+    // High performance profile
+    let mut high_perf = WasmtimeConfig::default();
+    high_perf.optimization_level = "speed".to_string();
+    high_perf.compilation_mode = "aot".to_string();
+    high_perf.use_interpreter = false;
+    high_perf.simd_enabled = true;
+    profiles.insert("high_performance".to_string(), high_perf);
+    
+    // Fast startup profile
+    let mut fast_startup = WasmtimeConfig::default();
+    fast_startup.compilation_mode = "lazy".to_string();
+    profiles.insert("fast_startup".to_string(), fast_startup);
+    
+    // Interpreter mode
+    let mut interpreter = WasmtimeConfig::default();
+    interpreter.use_interpreter = true;
+    profiles.insert("interpreter".to_string(), interpreter);
+    
+    // Minimal memory
+    let mut min_mem = WasmtimeConfig::default();
+    min_mem.optimization_level = "size".to_string();
+    profiles.insert("minimal_memory".to_string(), min_mem);
+    
+    // Maximum compatibility
+    let mut max_compat = WasmtimeConfig::default();
+    max_compat.memory64_enabled = false;
+    max_compat.simd_enabled = false;
+    max_compat.extended_const_enabled = false;
+    max_compat.threads_enabled = false;
+    profiles.insert("max_compatibility".to_string(), max_compat);
+    
+    profiles
+}
+
+fn run_optimization_analysis(
+    plugin_path: &str,
+    connection: &str,
+    database: &str,
+    query: &str,
+    source_table: &str,
+    profiles: &BTreeMap<String, WasmtimeConfig>,
+    iterations: usize,
+) -> anyhow::Result<OptimizationAnalysisResult> {
+    let mut results = Vec::new();
+    let test_id = Uuid::new_v4().to_string();
+    let timestamp = Local::now().format("%Y-%m-%dT%H:%M:%S").to_string();
+    
+    info!("开始优化分析，配置文件数: {}", profiles.len());
+    
+    for (profile_name, config) in profiles {
+        info!("测试配置文件: {}", profile_name);
+        info!("  - 内存64: {}", config.memory64_enabled);
+        info!("  - SIMD: {}", config.simd_enabled);
+        info!("  - 扩展常量: {}", config.extended_const_enabled);
+        info!("  - 线程: {}", config.threads_enabled);
+        info!("  - 解释器: {}", config.use_interpreter);
+        info!("  - 编译模式: {}", config.compilation_mode);
+        info!("  - 优化级别: {}", config.optimization_level);
+        
+        let benchmark_result = run_plugin_test(
+            plugin_path,
+            connection,
+            database,
+            query,
+            source_table,
+            iterations,
+            config,
+        )?;
+        
+        let total_time = benchmark_result.total_time_ms;
+        let avg_extract = if !benchmark_result.extract_time_ms.is_empty() {
+            benchmark_result.extract_time_ms.iter().sum::<u64>() as f64 / benchmark_result.extract_time_ms.len() as f64
+        } else {
+            0.0
+        };
+        
+        let avg_transform = if !benchmark_result.transform_time_ms.is_empty() {
+            benchmark_result.transform_time_ms.iter().sum::<u64>() as f64 / benchmark_result.transform_time_ms.len() as f64
+        } else {
+            0.0
+        };
+        
+        let avg_load = if !benchmark_result.load_time_ms.is_empty() {
+            benchmark_result.load_time_ms.iter().sum::<u64>() as f64 / benchmark_result.load_time_ms.len() as f64
+        } else {
+            0.0
+        };
+        
+        let profile_result = ProfileResult {
+            profile_name: profile_name.clone(),
+            memory64_enabled: config.memory64_enabled,
+            simd_enabled: config.simd_enabled,
+            extended_const_enabled: config.extended_const_enabled,
+            threads_enabled: config.threads_enabled,
+            use_interpreter: config.use_interpreter,
+            compilation_mode: config.compilation_mode.clone(),
+            optimization_level: config.optimization_level.clone(),
+            total_time_ms: total_time,
+            avg_extract_time_ms: avg_extract,
+            avg_transform_time_ms: avg_transform,
+            avg_load_time_ms: avg_load,
+            benchmark_result,
+        };
+        
+        results.push(profile_result);
+    }
+    
+    // 按照总时间排序
+    results.sort_by(|a, b| a.total_time_ms.cmp(&b.total_time_ms));
+    
+    // 构建结果
+    let analysis_result = OptimizationAnalysisResult {
+        results,
+        test_id,
+        timestamp,
+    };
+    
+    Ok(analysis_result)
+}
+
+fn display_optimization_analysis(result: &OptimizationAnalysisResult) {
+    info!("优化分析结果:");
+    
+    let mut table = Table::new();
+    table.add_row(Row::new(vec![
+        Cell::new("配置").style_spec("Bw"),
+        Cell::new("内存64").style_spec("Bw"),
+        Cell::new("SIMD").style_spec("Bw"),
+        Cell::new("解释器").style_spec("Bw"),
+        Cell::new("编译模式").style_spec("Bw"),
+        Cell::new("优化级别").style_spec("Bw"),
+        Cell::new("总时间(ms)").style_spec("Bw"),
+        Cell::new("提取(ms)").style_spec("Bw"),
+        Cell::new("转换(ms)").style_spec("Bw"),
+        Cell::new("加载(ms)").style_spec("Bw"),
+    ]));
+    
+    for profile in &result.results {
+        let total_time_cell = if profile == &result.results[0] {
+            Cell::new(&format!("{}", profile.total_time_ms)).style_spec("Fg")
+        } else {
+            Cell::new(&format!("{}", profile.total_time_ms))
+        };
+        
+        table.add_row(Row::new(vec![
+            Cell::new(&profile.profile_name),
+            Cell::new(&format!("{}", profile.memory64_enabled)),
+            Cell::new(&format!("{}", profile.simd_enabled)),
+            Cell::new(&format!("{}", profile.use_interpreter)),
+            Cell::new(&profile.compilation_mode),
+            Cell::new(&profile.optimization_level),
+            total_time_cell,
+            Cell::new(&format!("{:.2}", profile.avg_extract_time_ms)),
+            Cell::new(&format!("{:.2}", profile.avg_transform_time_ms)),
+            Cell::new(&format!("{:.2}", profile.avg_load_time_ms)),
+        ]));
+    }
+    
+    table.printstd();
+    
+    info!("最佳配置: {}", result.results[0].profile_name);
+    info!("  总时间: {} ms", result.results[0].total_time_ms);
+    info!("  内存64: {}", result.results[0].memory64_enabled);
+    info!("  SIMD: {}", result.results[0].simd_enabled);
+    info!("  解释器: {}", result.results[0].use_interpreter);
+}
+
+/// 显示基准测试结果
+fn display_results(result: &BenchmarkResult) {
+    println!("\n================================");
+    println!("插件信息: {} v{}", result.plugin_metadata.name, result.plugin_metadata.version);
+    println!("作者: {}", result.plugin_metadata.author);
+    println!("说明: {}", result.plugin_metadata.description);
+    println!("能力: {}", result.plugin_metadata.capabilities.join(", "));
+    println!("================================");
+    println!("记录数: {}", result.record_count);
+    println!("测试ID: {}", result.test_id);
+    println!("时间戳: {}", result.timestamp);
+    println!("================================");
+    
+    // 创建表格显示各阶段时间
+    let mut table = Table::new();
+    table.add_row(row!["迭代", "提取 (ms)", "转换 (ms)", "加载 (ms)", "总计 (ms)"]);
+    
+    // 添加每次迭代的结果
+    for i in 0..result.extract_time_ms.len() {
+        let extract = result.extract_time_ms[i];
+        let transform = result.transform_time_ms[i];
+        let load = result.load_time_ms[i];
+        let total = extract + transform + load;
+        
+        table.add_row(row![i + 1, extract, transform, load, total]);
+    }
+    
+    // 添加平均值
+    let avg_extract = result.extract_time_ms.iter().sum::<u64>() as f64 / result.extract_time_ms.len() as f64;
+    let avg_transform = result.transform_time_ms.iter().sum::<u64>() as f64 / result.transform_time_ms.len() as f64;
+    let avg_load = result.load_time_ms.iter().sum::<u64>() as f64 / result.load_time_ms.len() as f64;
+    let avg_total = avg_extract + avg_transform + avg_load;
+    
+    table.add_row(row!["平均", 
+        format!("{:.2}", avg_extract),
+        format!("{:.2}", avg_transform),
+        format!("{:.2}", avg_load),
+        format!("{:.2}", avg_total)
+    ]);
+    
+    // 打印表格
+    table.printstd();
+    println!("总时间: {} ms", result.total_time_ms);
+    println!("================================\n");
+}
+
+/// 比较并显示两个插件的结果
+fn compare_and_display_results(base: &BenchmarkResult, compare: &BenchmarkResult) {
+    println!("\n================================");
+    println!("插件比较");
+    println!("================================");
+    println!("基准插件: {} v{}", base.plugin_metadata.name, base.plugin_metadata.version);
+    println!("比较插件: {} v{}", compare.plugin_metadata.name, compare.plugin_metadata.version);
+    println!("记录数: {}", base.record_count);
+    println!("================================");
+    
+    // 计算平均值
+    let base_avg_extract = base.extract_time_ms.iter().sum::<u64>() as f64 / base.extract_time_ms.len() as f64;
+    let base_avg_transform = base.transform_time_ms.iter().sum::<u64>() as f64 / base.transform_time_ms.len() as f64;
+    let base_avg_load = base.load_time_ms.iter().sum::<u64>() as f64 / base.load_time_ms.len() as f64;
+    let base_avg_total = base_avg_extract + base_avg_transform + base_avg_load;
+    
+    let compare_avg_extract = compare.extract_time_ms.iter().sum::<u64>() as f64 / compare.extract_time_ms.len() as f64;
+    let compare_avg_transform = compare.transform_time_ms.iter().sum::<u64>() as f64 / compare.transform_time_ms.len() as f64;
+    let compare_avg_load = compare.load_time_ms.iter().sum::<u64>() as f64 / compare.load_time_ms.len() as f64;
+    let compare_avg_total = compare_avg_extract + compare_avg_transform + compare_avg_load;
+    
+    // 计算差异百分比
+    let extract_diff = ((compare_avg_extract - base_avg_extract) / base_avg_extract * 100.0);
+    let transform_diff = ((compare_avg_transform - base_avg_transform) / base_avg_transform * 100.0);
+    let load_diff = ((compare_avg_load - base_avg_load) / base_avg_load * 100.0);
+    let total_diff = ((compare_avg_total - base_avg_total) / base_avg_total * 100.0);
+    
+    // 创建比较表格
+    let mut table = Table::new();
+    table.add_row(row!["阶段", "基准 (ms)", "比较 (ms)", "差异 (%)", "结果"]);
+    
+    table.add_row(row!["提取", 
+        format!("{:.2}", base_avg_extract),
+        format!("{:.2}", compare_avg_extract),
+        format!("{:.2}%", extract_diff),
+        if extract_diff < 0.0 { "更快 ✓" } else { "更慢 ✗" }
+    ]);
+    
+    table.add_row(row!["转换", 
+        format!("{:.2}", base_avg_transform),
+        format!("{:.2}", compare_avg_transform),
+        format!("{:.2}%", transform_diff),
+        if transform_diff < 0.0 { "更快 ✓" } else { "更慢 ✗" }
+    ]);
+    
+    table.add_row(row!["加载", 
+        format!("{:.2}", base_avg_load),
+        format!("{:.2}", compare_avg_load),
+        format!("{:.2}%", load_diff),
+        if load_diff < 0.0 { "更快 ✓" } else { "更慢 ✗" }
+    ]);
+    
+    table.add_row(row!["总计", 
+        format!("{:.2}", base_avg_total),
+        format!("{:.2}", compare_avg_total),
+        format!("{:.2}%", total_diff),
+        if total_diff < 0.0 { "更快 ✓" } else { "更慢 ✗" }
+    ]);
+    
+    // 打印表格
+    table.printstd();
+    println!("================================\n");
+}
+
+/// 按字段值过滤记录
+fn filter_records(result: &BenchmarkResult, field: &str, value: &str) -> BenchmarkResult {
+    // 创建过滤后的结果副本
+    let mut filtered = result.clone();
+    
+    // 根据字段过滤记录
+    println!("\n过滤记录：字段 '{}' 值为 '{}'", field, value);
+    println!("原始记录数: {}", result.record_count);
+    
+    // 这里只是示例 - 实际过滤需要基于实际记录
+    filtered.record_count = result.record_count / 2; // 简化示例
+    
+    println!("过滤后记录数: {}", filtered.record_count);
+    
+    filtered
+}
+
+/// 显示记录
+fn display_records(result: &BenchmarkResult) {
+    // 创建表格显示记录
+    let mut table = Table::new();
+    table.add_row(row!["ID", "名称", "值", "时间戳"]);
+    
+    // 添加一些示例记录行
+    // 在实际应用中，你需要从结果中获取真实记录
+    for i in 0..5.min(result.record_count) {
+        table.add_row(row![
+            i + 1,
+            format!("记录{}", i + 1),
+            format!("{:.2}", (i as f64) * 1.5),
+            result.timestamp.clone()
+        ]);
+    }
+    
+    // 打印表格
+    table.printstd();
+}
+
+/// 导出基准测试结果到CSV文件
+fn export_to_csv(result: &BenchmarkResult, filename: &str) -> anyhow::Result<()> {
+    // 创建CSV写入器
+    let mut wtr = csv::Writer::from_path(filename)?;
+    
+    // 写入标题
+    wtr.write_record(&[
+        "迭代", "提取 (ms)", "转换 (ms)", "加载 (ms)", "总计 (ms)"
+    ])?;
+    
+    // 写入每次迭代的数据
+    for i in 0..result.extract_time_ms.len() {
+        let extract = result.extract_time_ms[i];
+        let transform = result.transform_time_ms[i];
+        let load = result.load_time_ms[i];
+        let total = extract + transform + load;
+        
+        wtr.write_record(&[
+            (i + 1).to_string(),
+            extract.to_string(),
+            transform.to_string(),
+            load.to_string(),
+            total.to_string(),
+        ])?;
+    }
+    
+    // 写入摘要行
+    let avg_extract = result.extract_time_ms.iter().sum::<u64>() as f64 / result.extract_time_ms.len() as f64;
+    let avg_transform = result.transform_time_ms.iter().sum::<u64>() as f64 / result.transform_time_ms.len() as f64;
+    let avg_load = result.load_time_ms.iter().sum::<u64>() as f64 / result.load_time_ms.len() as f64;
+    let avg_total = avg_extract + avg_transform + avg_load;
+    
+    wtr.write_record(&[
+        "平均".to_string(),
+        format!("{:.2}", avg_extract),
+        format!("{:.2}", avg_transform),
+        format!("{:.2}", avg_load),
+        format!("{:.2}", avg_total),
+    ])?;
+    
+    // 写入元数据
+    wtr.write_record(&[""])?;
+    wtr.write_record(&["元数据"])?;
+    wtr.write_record(&["插件名称", &result.plugin_metadata.name])?;
+    wtr.write_record(&["版本", &result.plugin_metadata.version])?;
+    wtr.write_record(&["作者", &result.plugin_metadata.author])?;
+    wtr.write_record(&["说明", &result.plugin_metadata.description])?;
+    wtr.write_record(&["能力", &result.plugin_metadata.capabilities.join(", ")])?;
+    wtr.write_record(&["记录数", &result.record_count.to_string()])?;
+    wtr.write_record(&["测试ID", &result.test_id])?;
+    wtr.write_record(&["时间戳", &result.timestamp])?;
+    
+    // 刷新写入器
+    wtr.flush()?;
+    
+    Ok(())
+} 
