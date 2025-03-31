@@ -47,7 +47,3 @@ tokio-test = "0.4.3"
 [[bench]]
 name = "query_benchmark"
 harness = false
-
-# Add patch to resolve arrow-arith and chrono method conflicts
-[patch.crates-io]
-arrow-arith = { git = "https://github.com/apache/arrow-rs", rev = "e00e61145c21e4da0c2c3f43ed365ef0e2041f3d" }
