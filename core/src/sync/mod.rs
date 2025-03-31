@@ -250,119 +250,125 @@ impl SyncManager {
             .map_err(|_| LumosError::Sync("Failed to acquire lock on last sync map".to_string()))?;
         
         let last_sync_time = if full_sync {
-            // For full sync, use epoch (sync everything)
-            UNIX_EPOCH
+            None
         } else {
-            // Get the last sync time, or epoch if never synced
-            *last_sync_map.get(table).unwrap_or(&UNIX_EPOCH)
+            last_sync_map.get(table).cloned()
         };
         
-        // Get the current time for this sync operation
-        let current_time = SystemTime::now();
-        
-        // Prepare column list for queries
+        // Build query for SQLite data retrieval
         let column_names = columns.iter()
             .map(|col| col.name.clone())
             .collect::<Vec<_>>()
             .join(", ");
         
-        // Convert last_sync_time to SQLite timestamp format
-        let last_sync_timestamp = last_sync_time.duration_since(UNIX_EPOCH)
-            .unwrap_or_else(|_| Duration::from_secs(0))
-            .as_secs();
+        let mut sql = format!("SELECT {} FROM {}", column_names, table);
         
-        // Get records modified since last sync
-        let query = format!(
-            "SELECT {} FROM {} WHERE rowid IN (
-                SELECT rowid FROM {} WHERE last_modified >= {}
-                ORDER BY rowid LIMIT {}
-            )",
-            column_names, table, table, last_sync_timestamp, self.config.batch_size
-        );
+        // Add time filter for incremental sync
+        if let Some(last_sync) = last_sync_time {
+            // Convert to Unix timestamp
+            let timestamp = last_sync
+                .duration_since(UNIX_EPOCH)
+                .map_err(|e| LumosError::Sync(format!("Time error: {}", e)))?
+                .as_secs() as i64;
+            
+            // We need a way to track row modifications in SQLite
+            // For now, we'll add a WHERE clause if _last_modified exists
+            if columns.iter().any(|col| col.name == "_last_modified") {
+                sql.push_str(&format!(" WHERE _last_modified > {}", timestamp));
+            }
+        }
         
-        let rows = self.sqlite.query_all(&query, &[])?;
+        // Query SQLite for data to sync
+        let sqlite_rows = self.sqlite.query_all(&sql, &[])?;
+        let total_rows = sqlite_rows.len();
         
-        if rows.is_empty() {
+        if total_rows == 0 {
             log::debug!("No changes to sync for table: {}", table);
+            
+            // Update last sync time even if no changes
+            last_sync_map.insert(table.to_string(), SystemTime::now());
+            
+            // Mark as synced in tracker
+            let mut tracker = self.tracker.lock()
+                .map_err(|_| LumosError::Sync("Failed to acquire lock on change tracker".to_string()))?;
+            
+            tracker.mark_synced(&[table.to_string()])?;
+            
             return Ok(());
         }
         
-        log::debug!("Synchronizing {} rows for table: {}", rows.len(), table);
+        log::info!("Syncing {} rows for table: {}", total_rows, table);
         
-        // Start a transaction for the DuckDB updates
-        let transaction_sql = "BEGIN TRANSACTION";
-        duckdb_conn.execute(transaction_sql, [])
-            .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+        // Process in batches
+        let batch_size = self.config.batch_size;
+        let mut synced_count = 0;
         
-        // Delete existing rows that will be replaced
-        if !full_sync && !rows.is_empty() {
-            // Extract row IDs
-            let mut row_ids = Vec::new();
-            for row in &rows {
-                // Assuming first column is the ID
-                if let Some(value) = row.get("id") {
-                    if let Ok(id) = value.parse::<i64>() {
-                        row_ids.push(id.to_string());
-                    }
-                }
-            }
-            
-            if !row_ids.is_empty() {
-                let delete_sql = format!(
-                    "DELETE FROM {} WHERE id IN ({})",
-                    table, row_ids.join(", ")
-                );
-                
+        for chunk in sqlite_rows.chunks(batch_size) {
+            // Clear existing data in DuckDB for full sync
+            if full_sync && synced_count == 0 {
+                let delete_sql = format!("DELETE FROM {}", table);
                 duckdb_conn.execute(&delete_sql, [])
                     .map_err(|e| LumosError::DuckDb(e.to_string()))?;
-            }
-        }
-        
-        // Prepare values for insertion
-        let mut values_lists = Vec::new();
-        
-        for row in &rows {
-            let mut values = Vec::new();
-            
-            for i in 0..columns.len() {
-                let column_name = &columns[i].name;
-                if let Some(value) = row.get(column_name) {
-                    if value == "NULL" {
-                        values.push("NULL".to_string());
-                    } else {
-                        // Escape single quotes in the value
-                        values.push(format!("'{}'", value.replace('\'', "''")));
-                    }
-                } else {
-                    values.push("NULL".to_string());
-                }
+                
+                log::debug!("Cleared existing data for full sync of table: {}", table);
             }
             
-            values_lists.push(format!("({})", values.join(", ")));
-        }
-        
-        // Batch inserts for better performance
-        let batch_size = 1000;
-        for chunk in values_lists.chunks(batch_size) {
+            // Build INSERT statement for DuckDB
+            let placeholders = (0..columns.len())
+                .map(|_| "?")
+                .collect::<Vec<_>>()
+                .join(", ");
+            
             let insert_sql = format!(
-                "INSERT INTO {} ({}) VALUES {}",
-                table, column_names, chunk.join(", ")
+                "INSERT INTO {} ({}) VALUES ({})",
+                table, column_names, placeholders
             );
             
-            duckdb_conn.execute(&insert_sql, [])
+            // Start a transaction
+            let tx = duckdb_conn.transaction()
                 .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+            
+            // Prepare the statement once
+            let mut stmt = tx.prepare(&insert_sql)
+                .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+            
+            // Insert each row
+            for row in chunk {
+                // Extract values for this row
+                let mut params: Vec<&dyn duckdb::ToSql> = Vec::with_capacity(columns.len());
+                
+                for col in &columns {
+                    if let Some(value) = row.get(&col.name) {
+                        params.push(value);
+                    } else {
+                        // Use NULL for missing values
+                        params.push(&duckdb::types::Value::Null);
+                    }
+                }
+                
+                // Execute the insert
+                stmt.execute(params.as_slice())
+                    .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+            }
+            
+            // Commit the transaction
+            tx.commit()
+                .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+            
+            synced_count += chunk.len();
+            log::debug!("Synced {}/{} rows for table: {}", synced_count, total_rows, table);
         }
         
-        // Commit the transaction
-        let commit_sql = "COMMIT";
-        duckdb_conn.execute(commit_sql, [])
-            .map_err(|e| LumosError::DuckDb(e.to_string()))?;
-        
         // Update last sync time
-        last_sync_map.insert(table.to_string(), current_time);
+        last_sync_map.insert(table.to_string(), SystemTime::now());
         
-        log::debug!("Synchronized {} rows for table: {}", rows.len(), table);
+        // Mark as synced in tracker
+        let mut tracker = self.tracker.lock()
+            .map_err(|_| LumosError::Sync("Failed to acquire lock on change tracker".to_string()))?;
         
+        tracker.mark_synced(&[table.to_string()])?;
+        
+        log::info!("Successfully synchronized table: {}", table);
         Ok(())
     }
 

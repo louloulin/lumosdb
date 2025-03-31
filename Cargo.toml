@@ -1,5 +1,5 @@
 [package]
-name = "lumos-dataflow"
+name = "lumos-db"
 version = "0.1.0"
 edition = "2021"
 description = "数据流处理和ETL功能模块，支持YAML配置和DAG依赖管理"

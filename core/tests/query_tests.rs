@@ -262,3 +262,109 @@ fn test_query_execution() -> Result<()> {
     
     Ok(())
 }
+
+#[test]
+fn test_query_optimizer() -> Result<()> {
+    // Create a query optimizer
+    let optimizer = lumos_core::query::parser::QueryOptimizer::new();
+    
+    // Test simple optimization - should be unchanged for now
+    let sql = "SELECT id, name FROM users WHERE age > 18";
+    let optimized = optimizer.optimize(sql)?;
+    
+    // The optimizer is not fully implemented, so we expect the original query
+    assert_eq!(optimized, sql);
+    
+    // Test cost estimation
+    let simple_query = "SELECT id, name FROM users";
+    let complex_query = "SELECT u.id, u.name, COUNT(o.id) as order_count 
+                         FROM users u 
+                         JOIN orders o ON u.id = o.user_id 
+                         GROUP BY u.id, u.name 
+                         HAVING order_count > 5
+                         ORDER BY order_count DESC";
+    
+    let simple_cost = optimizer.estimate_cost(simple_query);
+    let complex_cost = optimizer.estimate_cost(complex_query);
+    
+    // Complex query should have a higher cost
+    assert!(complex_cost > simple_cost);
+    assert!(complex_cost > 2000); // Should include join, group by, having, order by costs
+    
+    Ok(())
+}
+
+#[test]
+fn test_cross_engine_query_detection() -> Result<()> {
+    // Create temporary directories for the test databases
+    let sqlite_dir = tempfile::tempdir().expect("Failed to create temp dir for SQLite");
+    let sqlite_path = sqlite_dir.path().join("test.db");
+    let sqlite_path_str = sqlite_path.to_str().expect("Invalid path");
+    
+    let duckdb_dir = tempfile::tempdir().expect("Failed to create temp dir for DuckDB");
+    let duckdb_path = duckdb_dir.path().join("test.duckdb");
+    let duckdb_path_str = duckdb_path.to_str().expect("Invalid path");
+    
+    // Create and initialize the engines
+    let mut sqlite_engine = lumos_core::sqlite::SqliteEngine::new(sqlite_path_str);
+    sqlite_engine.init()?;
+    
+    let mut duckdb_engine = lumos_core::duckdb::DuckDbEngine::new(duckdb_path_str);
+    duckdb_engine.init()?;
+    
+    // Create test tables in both engines
+    sqlite_engine.execute(
+        "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)",
+        &[],
+    )?;
+    
+    duckdb_engine.execute(
+        "CREATE TABLE orders (id INTEGER, user_id INTEGER, total DOUBLE, created_at TIMESTAMP)",
+    )?;
+    
+    // Create a query executor
+    let mut executor = lumos_core::query::QueryExecutor::new(
+        sqlite_engine,
+        duckdb_engine,
+    );
+    
+    // Create a query that references both tables - should be identified as cross-engine
+    let mut query = lumos_core::query::Query::new(
+        "SELECT u.id, u.name, o.total 
+         FROM users u 
+         JOIN orders o ON u.id = o.user_id"
+    );
+    
+    // Check if this is a cross-engine query
+    let is_cross_engine = executor.is_cross_engine_query(&query)?;
+    
+    // This should be true since users is in SQLite and orders is in DuckDB
+    assert!(is_cross_engine);
+    
+    // Create a query that explicitly uses CROSSENGINE syntax
+    query = lumos_core::query::Query::new(
+        "SELECT * FROM CROSSENGINE(
+            SQLite: SELECT id, name FROM users,
+            DuckDB: SELECT user_id, SUM(total) as total FROM orders GROUP BY user_id
+         ) WHERE total > 100"
+    );
+    
+    // Check if this is a cross-engine query
+    let is_cross_engine = executor.is_cross_engine_query(&query)?;
+    
+    // This should be true due to the CROSSENGINE keyword
+    assert!(is_cross_engine);
+    
+    // Create a query that only references a table in one engine
+    query = lumos_core::query::Query::new(
+        "SELECT id, name FROM users WHERE age > 18"
+    );
+    
+    // Check if this is a cross-engine query
+    let is_cross_engine = executor.is_cross_engine_query(&query)?;
+    
+    // This should be false since it only references SQLite tables
+    assert!(!is_cross_engine);
+    
+    Ok(())
+}
