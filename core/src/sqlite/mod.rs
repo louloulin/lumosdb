@@ -154,6 +154,13 @@ impl SqliteEngine {
         log::info!("SQLite engine closed");
         Ok(())
     }
+
+    /// Check if a table exists in the database
+    pub fn table_exists(&self, table_name: &str) -> Result<bool> {
+        let sql = "SELECT name FROM sqlite_master WHERE type='table' AND name = ?";
+        let rows = self.query_all(sql, &[&table_name as &dyn rusqlite::ToSql])?;
+        Ok(!rows.is_empty())
+    }
 }
 
 // 明确实现Send和Sync特性

@@ -207,8 +207,9 @@ pub mod extractor {
         )?;
         
         for table_row in tables {
-            let table_name = table_row.get::<_, String>("name")
-                .ok_or_else(|| LumosError::Other("Failed to get table name".to_string()))?;
+            let table_name = table_row.get("name")
+                .ok_or_else(|| LumosError::Other("Failed to get table name".to_string()))?
+                .to_string();
             
             // Get columns for this table
             let columns = engine.query_all(
@@ -225,15 +226,19 @@ pub mod extractor {
             };
             
             for column_row in columns {
-                let column_name = column_row.get::<_, String>("name")
-                    .ok_or_else(|| LumosError::Other("Failed to get column name".to_string()))?;
-                let data_type = column_row.get::<_, String>("type")
-                    .ok_or_else(|| LumosError::Other("Failed to get column type".to_string()))?;
-                let not_null = column_row.get::<_, i32>("notnull")
-                    .ok_or_else(|| LumosError::Other("Failed to get not null status".to_string()))? == 1;
-                let pk = column_row.get::<_, i32>("pk")
-                    .ok_or_else(|| LumosError::Other("Failed to get primary key status".to_string()))? == 1;
-                let default_value = column_row.get::<_, Option<String>>("dflt_value");
+                let column_name = column_row.get("name")
+                    .ok_or_else(|| LumosError::Other("Failed to get column name".to_string()))?
+                    .to_string();
+                let data_type = column_row.get("type")
+                    .ok_or_else(|| LumosError::Other("Failed to get column type".to_string()))?
+                    .to_string();
+                let not_null = column_row.get("notnull")
+                    .ok_or_else(|| LumosError::Other("Failed to get not null status".to_string()))?
+                    .parse::<i32>().unwrap_or(0) == 1;
+                let pk = column_row.get("pk")
+                    .ok_or_else(|| LumosError::Other("Failed to get primary key status".to_string()))?
+                    .parse::<i32>().unwrap_or(0) == 1;
+                let default_value = column_row.get("dflt_value").map(|s| s.to_string());
                 
                 let column_schema = ColumnSchema {
                     name: column_name.clone(),
@@ -252,11 +257,17 @@ pub mod extractor {
             }
             
             // Get row count for the table
-            let count: i64 = engine.query_one(
-                &format!("SELECT COUNT(*) FROM {}", table_name),
-                &[],
-                |row| row.get(0),
-            )?.unwrap_or(0);
+            let count_sql = format!("SELECT COUNT(*) FROM {}", table_name);
+            let count_rows = engine.query_all(&count_sql, &[])?;
+            let count: i64 = if let Some(row) = count_rows.first() {
+                if let Some(count_str) = row.get("0") {
+                    count_str.parse().unwrap_or(0)
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
             
             table_schema.row_count = Some(count as usize);
             
@@ -273,11 +284,8 @@ pub mod extractor {
                     let mut data_row = HashMap::new();
                     
                     for column in &table_schema.columns {
-                        if let Some(value) = row.get::<_, Option<String>>(&column.name) {
-                            data_row.insert(column.name.clone(), value);
-                        } else {
-                            data_row.insert(column.name.clone(), "NULL".to_string());
-                        }
+                        let value = row.get(&column.name).map_or("NULL".to_string(), |v| v.to_string());
+                        data_row.insert(column.name.clone(), value);
                     }
                     
                     sample_data.push(data_row);
@@ -290,19 +298,25 @@ pub mod extractor {
         }
         
         // Extract foreign key relationships
-        for table in &schema.tables {
+        // 先复制数据，避免同时拥有不可变和可变借用
+        let tables_copy = schema.tables.clone();
+        
+        for table in &tables_copy {
             let fk_results = engine.query_all(
                 "PRAGMA foreign_key_list(?)",
                 &[&table.name as &dyn rusqlite::ToSql],
             )?;
             
             for fk_row in fk_results {
-                let target_table = fk_row.get::<_, String>("table")
-                    .ok_or_else(|| LumosError::Other("Failed to get target table".to_string()))?;
-                let source_column = fk_row.get::<_, String>("from")
-                    .ok_or_else(|| LumosError::Other("Failed to get source column".to_string()))?;
-                let target_column = fk_row.get::<_, String>("to")
-                    .ok_or_else(|| LumosError::Other("Failed to get target column".to_string()))?;
+                let target_table = fk_row.get("table")
+                    .ok_or_else(|| LumosError::Other("Failed to get target table".to_string()))?
+                    .to_string();
+                let source_column = fk_row.get("from")
+                    .ok_or_else(|| LumosError::Other("Failed to get source column".to_string()))?
+                    .to_string();
+                let target_column = fk_row.get("to")
+                    .ok_or_else(|| LumosError::Other("Failed to get target column".to_string()))?
+                    .to_string();
                 
                 // Determine relationship type (simplified)
                 let relationship_type = RelationshipType::ManyToOne; // Default for foreign keys
@@ -327,15 +341,16 @@ pub mod extractor {
         let mut schema = DbSchema::new();
         
         // Get all tables
-        let tables = engine.query_all(
+        let tables = engine.query(
             "SELECT table_name FROM information_schema.tables WHERE table_schema='main'",
             &[],
+            |row| {
+                let table_name: String = row.get(0)?;
+                Ok(table_name)
+            }
         )?;
         
-        for table_row in tables {
-            let table_name = table_row.get::<_, String>("table_name")
-                .ok_or_else(|| LumosError::Other("Failed to get table name".to_string()))?;
-            
+        for table_name in tables {
             // Get columns for this table
             let columns = engine.query(
                 "SELECT column_name, data_type, is_nullable, column_default 
@@ -390,45 +405,32 @@ pub mod extractor {
             }
             
             // Get row count for the table
-            let count: i64 = engine.query_one(
+            let count = engine.query(
                 &format!("SELECT COUNT(*) FROM {}", table_name),
                 &[],
-                |row| row.get(0),
-            )?.unwrap_or(0);
+                |row| {
+                    let count: i64 = row.get(0)?;
+                    Ok(count)
+                }
+            )?.first().cloned().unwrap_or(0);
             
             table_schema.row_count = Some(count as usize);
             
             // Get sample data (up to 5 rows)
-            let sample_data_vec = engine.query(
-                &format!("SELECT * FROM {} LIMIT 5", table_name),
-                &[],
-                |row| {
-                    let mut data_row = HashMap::new();
-                    
-                    for i in 0..row.column_count() {
-                        if let Ok(column_name) = row.column_name(i) {
-                            let value = match row.get_ref(i) {
-                                Ok(val) => match val {
-                                    duckdb::types::ValueRef::Null => "NULL".to_string(),
-                                    duckdb::types::ValueRef::Boolean(b) => b.to_string(),
-                                    duckdb::types::ValueRef::SmallInt(i) => i.to_string(),
-                                    duckdb::types::ValueRef::Int(i) => i.to_string(),
-                                    duckdb::types::ValueRef::BigInt(i) => i.to_string(),
-                                    duckdb::types::ValueRef::Float(f) => f.to_string(),
-                                    duckdb::types::ValueRef::Double(f) => f.to_string(),
-                                    duckdb::types::ValueRef::Text(s) => s.to_string(),
-                                    _ => "UNSUPPORTED_TYPE".to_string(),
-                                },
-                                Err(_) => "ERROR".to_string(),
-                            };
-                            
-                            data_row.insert(column_name.to_string(), value);
-                        }
-                    }
-                    
-                    Ok(data_row)
+            let sample_query = format!("SELECT * FROM {} LIMIT 5", table_name);
+            let mut sample_data_vec = Vec::new();
+            
+            // 直接一步获取所有数据为字符串
+            let rows_result = engine.query_all_as_strings(&sample_query)?;
+            
+            // 转换为要求的格式
+            for row_map in rows_result {
+                let mut data_row = HashMap::new();
+                for (col, val) in row_map {
+                    data_row.insert(col, val);
                 }
-            )?;
+                sample_data_vec.push(data_row);
+            }
             
             if !sample_data_vec.is_empty() {
                 table_schema.sample_data = Some(sample_data_vec);

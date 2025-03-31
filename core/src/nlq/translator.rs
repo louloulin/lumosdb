@@ -442,7 +442,7 @@ impl NlQueryTranslator for RuleBasedTranslator {
             breakdown.push(ClauseExplanation {
                 clause_type: "SELECT".to_string(),
                 content: select_content.to_string(),
-                explanation: if select_content == "*" {
+                explanation: if select_content.trim() == "*" {
                     "Selects all columns".to_string()
                 } else {
                     format!("Selects the following columns: {}", select_content)

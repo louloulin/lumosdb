@@ -325,11 +325,11 @@ impl SyncManager {
             );
             
             // Start a transaction
-            let tx = duckdb_conn.transaction()
-                .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+            let mut duckdb_conn = self.duckdb.connection()?;
             
-            // Prepare the statement once
-            let mut stmt = tx.prepare(&insert_sql)
+            // 不使用事务，改为单独执行每个批次
+            // 准备语句
+            let mut stmt = duckdb_conn.prepare(&insert_sql)
                 .map_err(|e| LumosError::DuckDb(e.to_string()))?;
             
             // Insert each row
@@ -350,10 +350,6 @@ impl SyncManager {
                 stmt.execute(params.as_slice())
                     .map_err(|e| LumosError::DuckDb(e.to_string()))?;
             }
-            
-            // Commit the transaction
-            tx.commit()
-                .map_err(|e| LumosError::DuckDb(e.to_string()))?;
             
             synced_count += chunk.len();
             log::debug!("Synced {}/{} rows for table: {}", synced_count, total_rows, table);

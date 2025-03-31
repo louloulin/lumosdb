@@ -279,10 +279,10 @@ impl QueryExecutor {
         
         let result = match engine {
             EngineType::Sqlite => {
-                executor::execute_sqlite(&self.sqlite, &query)?
+                executor::execute_on_sqlite(&self.sqlite, &query)?
             },
             EngineType::DuckDb => {
-                executor::execute_duckdb(&self.duckdb, &query)?
+                executor::execute_on_duckdb(&self.duckdb, &query)?
             },
             EngineType::Auto => {
                 // This shouldn't happen as we've already resolved it above
@@ -341,7 +341,7 @@ impl QueryExecutor {
     }
 
     /// Execute a query that spans both engines
-    fn execute_cross_engine_query(&self, query: Query) -> Result<QueryResult> {
+    fn execute_cross_engine_query(&mut self, query: Query) -> Result<QueryResult> {
         log::info!("Executing cross-engine query: {}", query.sql);
         
         // Start measuring time
@@ -479,13 +479,13 @@ impl QueryExecutor {
                     query: query.sql.clone(),
                 }
             }
-        }
+        };
         
         Ok(plan)
     }
 
     /// Execute a cross-engine execution plan
-    fn execute_cross_engine_plan(&self, plan: CrossEngineExecutionPlan) -> Result<Vec<IntermediateResult>> {
+    fn execute_cross_engine_plan(&mut self, plan: CrossEngineExecutionPlan) -> Result<Vec<IntermediateResult>> {
         match plan {
             CrossEngineExecutionPlan::SingleEngine { engine, query } => {
                 // This is not really a cross-engine query, so just execute it directly
@@ -635,26 +635,29 @@ impl QueryExecutor {
             let conn = self.duckdb.connection()?;
             
             for batch in rows.chunks(batch_size) {
-                let tx = conn.transaction()?;
-                let mut stmt = tx.prepare(&insert_sql)?;
-                
                 for row in batch {
-                    // Convert row values to DuckDB parameters
-                    let mut params = Vec::with_capacity(columns.len());
+                    // 首先收集所有临时字符串
+                    let mut string_values = Vec::new();
                     
+                    // 创建参数向量
+                    let mut params: Vec<String> = Vec::with_capacity(columns.len());
+                    
+                    // 处理每个列的值
                     for col in &columns {
                         if let Some(value) = row.get(&col.name) {
-                            params.push(value as &dyn duckdb::ToSql);
+                            params.push(value.clone());
                         } else {
-                            params.push(&None::<i32> as &dyn duckdb::ToSql);
+                            params.push("NULL".to_string());
                         }
                     }
                     
-                    stmt.execute(params.as_slice())?;
+                    // 使用DuckDB参数格式执行插入
+                    conn.execute(&insert_sql, &params)?;
                 }
-                
-                tx.commit()?;
             }
+            
+            conn.execute("BEGIN", &[])?;
+            conn.execute("COMMIT", &[])?;
         }
         
         // 5. Create a view that maps to the original table name
@@ -754,33 +757,23 @@ impl QueryExecutor {
             let conn = self.sqlite.connection()?;
             
             for batch in rows.chunks(batch_size) {
-                let tx = conn.transaction()?;
-                
-                for row_values in batch {
-                    // Convert JSON values to SQLite parameters
-                    let mut params: Vec<&dyn rusqlite::ToSql> = Vec::with_capacity(columns.len());
+                for row in batch {
+                    // 收集所有值
+                    let mut params = Vec::with_capacity(columns.len());
                     
-                    for value in row_values {
-                        match value {
-                            JsonValue::Null => params.push(&None::<i32> as &dyn rusqlite::ToSql),
-                            JsonValue::Bool(b) => params.push(b as &dyn rusqlite::ToSql),
-                            JsonValue::Number(n) => {
-                                if n.is_i64() {
-                                    params.push(&n.as_i64().unwrap() as &dyn rusqlite::ToSql);
-                                } else {
-                                    params.push(&n.as_f64().unwrap() as &dyn rusqlite::ToSql);
-                                }
-                            },
-                            JsonValue::String(s) => params.push(s as &dyn rusqlite::ToSql),
-                            _ => params.push(&None::<i32> as &dyn rusqlite::ToSql),
-                        }
+                    for i in 0..columns.len() {
+                        let column_name = &columns[i].0;
+                        // 将值转换为适当的参数
+                        params.push(format!("{}", row[i]));
                     }
                     
-                    tx.execute(&insert_sql, params.as_slice())?;
+                    // 执行插入操作
+                    conn.execute(&insert_sql, rusqlite::params_from_iter(params.iter()))?;
                 }
-                
-                tx.commit()?;
             }
+            
+            conn.execute("BEGIN", &[])?;
+            conn.execute("COMMIT", &[])?;
         }
         
         // 5. Create a view that maps to the original table name
@@ -855,10 +848,12 @@ impl QueryExecutor {
             }
         }
         
+        let rows_count = combined_rows.len();
+        
         Ok(QueryResult {
             columns: combined_columns,
             rows: combined_rows,
-            rows_affected: combined_rows.len(),
+            rows_affected: rows_count,
             engine_used: EngineType::Auto,
             execution_time_ms: 0, // Will be filled in by the caller
         })

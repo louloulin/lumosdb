@@ -4,6 +4,7 @@ pub mod analytics;
 use duckdb::{Connection, params, Result as DuckResult};
 use crate::{LumosError, Result};
 use serde_json::Value as JsonValue;
+use std::collections::HashMap;
 
 // Re-export duckdb Error type
 pub use duckdb::Error;
@@ -177,6 +178,67 @@ impl DuckDbEngine {
             .map_err(|e| LumosError::DuckDb(e.to_string()))?;
         
         Ok(count > 0)
+    }
+    
+    /// 执行查询并返回所有行，以字符串形式返回所有值
+    pub fn query_all_as_strings(&self, sql: &str) -> Result<Vec<HashMap<String, String>>> {
+        let conn = self.connection()?;
+        let mut stmt = conn.prepare(sql)
+            .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+            
+        // 获取列名
+        let column_count = stmt.column_count();
+        let mut column_names = Vec::with_capacity(column_count);
+        for i in 0..column_count {
+            let name = stmt.column_name(i)
+                .map_err(|e| LumosError::DuckDb(e.to_string()))?
+                .to_string();
+            column_names.push(name);
+        }
+        
+        // 执行查询
+        let mut rows = Vec::new();
+        let mut query_result = stmt.query([])
+            .map_err(|e| LumosError::DuckDb(e.to_string()))?;
+            
+        while let Some(row) = query_result.next()
+            .map_err(|e| LumosError::DuckDb(e.to_string()))?
+        {
+            let mut row_map = std::collections::HashMap::new();
+            for (i, column_name) in column_names.iter().enumerate() {
+                let value = match row.get_ref(i) {
+                    Ok(value_ref) => {
+                        match value_ref {
+                            duckdb::types::ValueRef::Null => "NULL".to_string(),
+                            duckdb::types::ValueRef::Boolean(b) => b.to_string(),
+                            duckdb::types::ValueRef::TinyInt(i) => i.to_string(),
+                            duckdb::types::ValueRef::SmallInt(i) => i.to_string(),
+                            duckdb::types::ValueRef::Int(i) => i.to_string(),
+                            duckdb::types::ValueRef::BigInt(i) => i.to_string(),
+                            duckdb::types::ValueRef::HugeInt(i) => i.to_string(),
+                            duckdb::types::ValueRef::UTinyInt(i) => i.to_string(),
+                            duckdb::types::ValueRef::USmallInt(i) => i.to_string(),
+                            duckdb::types::ValueRef::UInt(i) => i.to_string(),
+                            duckdb::types::ValueRef::UBigInt(i) => i.to_string(),
+                            duckdb::types::ValueRef::Float(f) => f.to_string(),
+                            duckdb::types::ValueRef::Double(f) => f.to_string(),
+                            duckdb::types::ValueRef::Text(s) => {
+                                std::str::from_utf8(s).unwrap_or_default().to_string()
+                            },
+                            duckdb::types::ValueRef::Blob(b) => format!("<BLOB: {} bytes>", b.len()),
+                            _ => "<UNSUPPORTED>".to_string(),
+                        }
+                    },
+                    Err(_) => "<ERROR>".to_string(),
+                };
+                
+                row_map.insert(column_name.clone(), value);
+            }
+            
+            rows.push(row_map);
+        }
+        
+        Ok(rows)
     }
     
     /// Close the connection
