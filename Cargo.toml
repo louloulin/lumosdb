@@ -90,7 +90,7 @@ sql = ["sqlx"]
 plugins = []
 
 [workspace]
-members = ["dataflow/wasm-postgresql-test"]
+members = ["dataflow/wasm-postgresql-test", "vector-test"]
 exclude = ["examples/plugins/postgresql"]
 
 [workspace.dependencies]

@@ -7,6 +7,9 @@ pub mod transformers;
 pub mod types;
 pub mod plugin;
 
+#[cfg(feature = "vector-store")]
+pub mod vector_store;
+
 // Re-export common types for easier usage
 pub use types::{DataRecord, ETLError};
 pub use config::ETLConfig;
@@ -35,4 +38,11 @@ pub use api::start_api_server;
 pub use plugin::{
     Plugin, PluginMetadata, PluginType, PluginManager,
     init_plugin_manager, with_plugin_manager
+}; 
+
+// 导出向量存储
+#[cfg(feature = "vector-store")]
+pub use vector_store::{
+    VectorStore, VectorStoreConfig, VectorSearchResult,
+    DistanceMetric, IndexType,
 }; 
