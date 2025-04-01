@@ -5,7 +5,11 @@ import { secureHeaders } from 'hono/secure-headers'
 import { logger as honoLogger } from 'hono/logger'
 import dotenv from 'dotenv'
 import winston from 'winston'
-import { apiRoutes } from './routes/index.js'
+import settingsRoutes from './routes/settings'
+import sqliteRoutes from './routes/sqlite'
+import duckdbRoutes from './routes/duckdb'
+import vectorRoutes from './routes/vector'
+import aiRoutes from './routes/ai'
 
 // 配置环境变量
 dotenv.config()
@@ -28,6 +32,7 @@ const winstonLogger = winston.createLogger({
 
 // 创建 Hono 应用
 const app = new Hono()
+const apiRoutes = new Hono()
 
 // 中间件
 app.use('*', honoLogger())
@@ -38,13 +43,54 @@ app.use('*', cors({
 app.use('*', secureHeaders())
 app.use('*', compress())
 
-// 健康检查路由
-app.get('/health', (c) => {
-  return c.json({ status: 'ok', message: 'LumosDB API is running' })
+// 根路由
+app.get('/', (c) => {
+  return c.json({
+    message: 'Welcome to LumosDB API'
+  })
 })
 
-// 路由
+// 健康检查路由
+app.get('/health', (c) => {
+  return c.json({
+    status: 'ok',
+    message: 'LumosDB API is running', 
+    version: '1.0.0'
+  })
+})
+
+// 挂载API路由
 app.route('/api', apiRoutes)
+
+// 诊断路由
+app.get('/routes-debug', (c) => {
+  return c.json({
+    appRoutes: Object.keys(app.routes),
+    apiRoutes: Object.keys(apiRoutes.routes),
+    settingsExists: !!settingsRoutes
+  })
+})
+
+// 挂载子路由
+apiRoutes.route('/sqlite', sqliteRoutes)
+apiRoutes.route('/duckdb', duckdbRoutes)
+apiRoutes.route('/vector', vectorRoutes)
+apiRoutes.route('/ai', aiRoutes)
+apiRoutes.route('/settings', settingsRoutes)
+
+// 测试设置路由
+apiRoutes.get('/test-settings', (c) => {
+  return c.json({
+    success: true,
+    message: 'Test settings route works!',
+    settings: {
+      general: {
+        theme: 'light',
+        language: 'zh-CN'
+      }
+    }
+  })
+})
 
 // WebSocket 简单示例（在需要时可以扩展）
 app.get('/ws', (c) => {
@@ -67,7 +113,7 @@ app.onError((err, c) => {
 
 // 对于 Bun 运行时，导出 fetch 处理函数
 export default {
-  port: Number(process.env.PORT || 3005),
+  port: Number(process.env.PORT || 3006),
   fetch: app.fetch
 }
 

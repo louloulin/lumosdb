@@ -1,0 +1,26 @@
+{
+  "general": {
+    "theme": "light",
+    "language": "zh-CN",
+    "autoSave": true,
+    "confirmOnDelete": true
+  },
+  "database": {
+    "maxConnections": 5,
+    "timeout": 30000,
+    "cachingEnabled": true,
+    "defaultPageSize": 20
+  },
+  "security": {
+    "apiKeyEnabled": false,
+    "apiKeyValue": "",
+    "authRequired": false,
+    "sessionTimeout": 3600
+  },
+  "ui": {
+    "compactMode": false,
+    "enableAnimations": true,
+    "showHiddenFiles": false,
+    "editorFontSize": 14
+  }
+}
