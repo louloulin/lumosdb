@@ -29,9 +29,14 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   experimental: {
-    // Correctly configure turbo as an object instead of a boolean
+    // Correctly configure turbo as an object
     turbo: {
-      enabled: false,
+      rules: {
+        // Specify which directories should be processed by turbo
+        '*.{js,ts,jsx,tsx}': {
+          loaders: ['@swc/core'],
+        },
+      },
     },
   },
 }
