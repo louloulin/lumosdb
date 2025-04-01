@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, FileDown, RefreshCw, Search } from "lucide-react";
+import Link from "next/link";
 
 export default function SQLitePage() {
   // Sample data for demonstration
@@ -54,9 +55,11 @@ export default function SQLitePage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            Create Table
+          <Button asChild>
+            <Link href="/dashboard/sqlite/tables/create">
+              <Plus className="mr-2 h-4 w-4" />
+              Create Table
+            </Link>
           </Button>
           <Button variant="outline">
             <RefreshCw className="mr-2 h-4 w-4" />

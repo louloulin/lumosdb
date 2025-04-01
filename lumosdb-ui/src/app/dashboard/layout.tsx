@@ -15,6 +15,7 @@ import {
   LogOut,
   MoonStar,
   Sun,
+  Code,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -31,6 +32,11 @@ export default function DashboardLayout({
       name: "Dashboard",
       href: "/dashboard",
       icon: LayoutDashboard,
+    },
+    {
+      name: "SQL Editor",
+      href: "/dashboard/sql-editor",
+      icon: Code,
     },
     {
       name: "SQLite Tables",
