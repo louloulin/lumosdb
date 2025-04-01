@@ -1,0 +1,30 @@
+{
+  "name": "lumos-db",
+  "version": "0.1.0",
+  "description": "轻量级数据库管理与探索工具，支持 SQLite, DuckDB 和向量数据库",
+  "private": true,
+  "scripts": {
+    "dev": "bun --cwd lumosdb-ui run dev",
+    "build": "bun --cwd lumosdb-ui run build",
+    "start": "bun --cwd lumosdb-ui run start",
+    "lint": "bun --cwd lumosdb-ui run lint",
+    "test": "bun --cwd lumosdb-ui run test"
+  },
+  "workspaces": [
+    "lumosdb-ui",
+    "lumosdb-api"
+  ],
+  "keywords": [
+    "database",
+    "sqlite",
+    "duckdb",
+    "vector-database",
+    "database-management"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "bun": ">=1.0.0"
+  }
+} 

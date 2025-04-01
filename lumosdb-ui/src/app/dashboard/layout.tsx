@@ -21,9 +21,11 @@ import {
   RefreshCw,
   Palette,
   Globe,
+  Sparkles,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { MobileDrawer } from "@/components/mobile/mobile-drawer";
+import { MobileOptimizedView } from "@/components/mobile/mobile-optimized-view";
 
 export default function DashboardLayout({
   children,
@@ -83,6 +85,11 @@ export default function DashboardLayout({
       name: "Language Settings",
       href: "/dashboard/language",
       icon: Globe,
+    },
+    {
+      name: "AI Assistant",
+      href: "/dashboard/ai-assistant",
+      icon: Sparkles,
     },
     {
       name: "Settings",
@@ -157,7 +164,9 @@ export default function DashboardLayout({
         {/* 主内容区域 - 在移动设备上全宽显示 */}
         <main className="flex-1 md:pl-64">
           <div className="px-6 py-6">
-            {children}
+            <MobileOptimizedView>
+              {children}
+            </MobileOptimizedView>
           </div>
         </main>
       </div>
