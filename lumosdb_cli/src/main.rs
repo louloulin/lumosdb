@@ -11,15 +11,31 @@ use config::CliConfig;
 use std::path::PathBuf;
 
 /// LumosDB CLI Tool - A command-line interface for Lumos-DB
+///
+/// Examples:
+///   # Start interactive REPL
+///   lumosdb
+///
+///   # Start with a specific connection
+///   lumosdb --connect "lumos://localhost:8080"
+///
+///   # Execute a single SQL query
+///   lumosdb exec "SELECT * FROM users"
+///
+///   # Execute SQL file
+///   lumosdb file path/to/script.sql
 #[derive(Parser)]
 #[command(name = "lumosdb")]
 #[command(author, version, about, long_about = None)]
 struct Cli {
     /// Path to config file
-    #[arg(short, long, value_name = "FILE")]
+    #[arg(short = 'C', long, value_name = "FILE")]
     config: Option<PathBuf>,
 
-    /// Connection string, format: [sqlite|duckdb]://path/to/database
+    /// Connection string
+    /// Format: lumos://hostname:port - Connect to LumosDB server
+    /// Format: sqlite://path/to/file.db - Connect to SQLite database
+    /// Format: duckdb://path/to/file.db - Connect to DuckDB database
     #[arg(short, long)]
     connect: Option<String>,
 

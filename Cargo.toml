@@ -6,48 +6,29 @@ description = "数据流处理和ETL功能模块，支持YAML配置和DAG依赖�
 
 # 示例二进制文件
 [[example]]
-name = "run_etl_job"
-path = "examples/run_etl_job.rs"
-
-[[example]]
-name = "run_memory_etl"
-path = "examples/run_memory_etl.rs"
-
-[[example]]
-name = "plugin_manager"
-path = "examples/plugin_manager.rs"
-
-[[example]]
-name = "test_plugins"
-path = "examples/test_plugins.rs"
-
-[[example]]
-name = "plugin_test"
-path = "examples/plugin_test.rs"
-
-[[example]]
-name = "simple_plugin_test"
-path = "examples/simple_plugin_test.rs"
+name = "wasm_plugin_manager"
+path = "examples/wasm_plugin_manager.rs"
+required-features = ["plugins"]
 
 [[example]]
 name = "validate_wasm_plugin"
 path = "examples/validate_wasm_plugin.rs"
-
-[[example]]
-name = "wasm_plugin_manager"
-path = "examples/wasm_plugin_manager.rs"
+required-features = ["plugins"]
 
 [[example]]
 name = "run_wasm_etl"
 path = "examples/run_wasm_etl.rs"
+required-features = ["etl", "plugins"]
 
 [[example]]
 name = "memory_wasm_test"
 path = "examples/memory_wasm_test.rs"
+required-features = ["etl", "plugins"]
 
 [[example]]
 name = "simple_wasm_test"
 path = "examples/simple_wasm_test.rs"
+required-features = ["plugins"]
 
 [dependencies]
 actix = "0.13.0"
