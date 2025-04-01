@@ -4,6 +4,7 @@ mod config;
 mod connection;
 mod output;
 mod repl;
+mod sync;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};

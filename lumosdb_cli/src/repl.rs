@@ -3,6 +3,7 @@ use crate::commands::{CommandProcessor, CommandType};
 use crate::config::CliConfig;
 use crate::connection::{Connection, DatabaseMetadata, QueryResult};
 use crate::output::{OutputFormat, ResultFormatter};
+use crate::sync::{SyncConfig, SyncManager, SyncStatus};
 use anyhow::{anyhow, Context, Result};
 use colored::Colorize;
 use crossterm::terminal::{Clear, ClearType};
@@ -107,12 +108,28 @@ impl Repl {
         println!("  {}  设置输出格式", "\\f, \\format [table|json|csv|vertical]".blue());
         println!("  {}  显示当前数据库状态", "\\status, \\stat".blue());
         println!("  {}  清屏", "\\clear, \\cls".blue());
+        
+        // 增量同步命令
+        println!();
+        println!("{}", "增量同步命令:".bold());
+        println!("  {}  执行同步操作", "\\sync [源连接] [目标连接] [--tables 表1,表2] [--since 时间戳]".blue());
+        println!("  {}  创建同步配置", "\\create-sync [名称] [源连接] [目标连接] [--tables 表1,表2] [--interval 秒数]".blue());
+        println!("  {}  列出所有同步配置", "\\list-syncs".blue());
+        println!("  {}  删除同步配置", "\\delete-sync [名称]".blue());
+        
         println!();
         println!("支持的格式:");
         println!("  {} - 表格格式 (默认)", "table".yellow());
         println!("  {} - JSON格式", "json".yellow());
         println!("  {} - CSV格式", "csv".yellow());
         println!("  {} - 垂直格式 (每列一行)", "vertical".yellow());
+        println!();
+        
+        println!("示例:");
+        println!("  {}  执行SQL查询", "SELECT * FROM users".green());
+        println!("  {}  导出查询结果为CSV", "\\export csv results.csv".green());
+        println!("  {}  同步两个数据库", "\\sync sqlite://source.db sqlite://target.db".green());
+        println!("  {}  增量同步指定表", "\\sync lumos://localhost:8080 sqlite://local.db --tables users,orders --since 2023-01-01".green());
         println!();
         
         Ok(())
@@ -503,6 +520,197 @@ impl Repl {
         Ok(())
     }
     
+    /// 执行同步
+    fn execute_sync(&self, source: &str, target: &str, tables: Option<Vec<String>>, since: Option<String>) -> Result<()> {
+        // 检查是否有连接
+        if self.connection.is_none() {
+            println!("{}", "当前没有活动连接，但同步命令不需要活动连接".yellow());
+        }
+        
+        println!("开始同步数据...");
+        println!("源: {}", source);
+        println!("目标: {}", target);
+        
+        if let Some(tables) = &tables {
+            println!("同步表: {}", tables.join(", "));
+        } else {
+            println!("同步所有表");
+        }
+        
+        if let Some(since) = &since {
+            println!("仅同步 {} 之后的更改", since);
+        }
+        
+        println!();
+        
+        // 创建同步管理器
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("无法确定配置目录"))?
+            .join("lumosdb");
+            
+        let mut sync_manager = SyncManager::new(&config_dir)?;
+        
+        // 执行同步
+        let results = sync_manager.execute_sync(
+            &self.config,
+            source,
+            target,
+            tables.as_ref(),
+            since.as_deref(),
+        )?;
+        
+        // 显示结果
+        let mut total_rows = 0;
+        let mut total_errors = 0;
+        
+        println!("同步结果:");
+        println!("{:-<50}", "");
+        
+        for (table, result) in &results {
+            total_rows += result.rows_synced;
+            
+            println!("{}: {} 行同步", table, result.rows_synced);
+            
+            if let Some(errors) = &result.errors {
+                total_errors += errors.len();
+                println!("  错误:");
+                for error in errors {
+                    println!("  - {}", error.red());
+                }
+            }
+        }
+        
+        println!("{:-<50}", "");
+        println!("总计: {} 个表，{} 行，{} 个错误", results.len(), total_rows, total_errors);
+        
+        Ok(())
+    }
+    
+    /// 创建同步配置
+    fn create_sync(&self, name: &str, source: &str, target: &str, tables: Option<Vec<String>>, interval: Option<u64>) -> Result<()> {
+        // 创建同步管理器
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("无法确定配置目录"))?
+            .join("lumosdb");
+            
+        let mut sync_manager = SyncManager::new(&config_dir)?;
+        
+        // 创建同步配置
+        let config = SyncConfig::new(
+            name.to_string(),
+            source.to_string(),
+            target.to_string(),
+            tables,
+            interval,
+        );
+        
+        // 添加到管理器
+        sync_manager.add_config(config)?;
+        
+        println!("同步配置 '{}' 已创建", name);
+        
+        Ok(())
+    }
+    
+    /// 列出同步配置
+    fn list_syncs(&self) -> Result<()> {
+        // 创建同步管理器
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("无法确定配置目录"))?
+            .join("lumosdb");
+            
+        let sync_manager = SyncManager::new(&config_dir)?;
+        
+        // 获取所有配置
+        let configs = sync_manager.get_configs();
+        
+        if configs.is_empty() {
+            println!("没有同步配置");
+            return Ok(());
+        }
+        
+        // 创建表格
+        let mut table = Table::new();
+        
+        // 添加表头
+        table.set_titles(Row::new(
+            vec![
+                Cell::new("名称"),
+                Cell::new("源"),
+                Cell::new("目标"),
+                Cell::new("表"),
+                Cell::new("间隔"),
+                Cell::new("最后同步时间"),
+                Cell::new("状态"),
+            ]
+        ));
+        
+        // 添加数据行
+        for (_, config) in configs {
+            let tables = match &config.tables {
+                Some(tables) => {
+                    if tables.len() > 3 {
+                        format!("{}, ... (共{}个)", tables[0..3].join(", "), tables.len())
+                    } else {
+                        tables.join(", ")
+                    }
+                },
+                None => "全部".to_string(),
+            };
+            
+            let interval = match config.interval {
+                Some(interval) => format!("{}秒", interval),
+                None => "手动".to_string(),
+            };
+            
+            let last_sync = match &config.last_sync {
+                Some(time) => time.format("%Y-%m-%d %H:%M:%S").to_string(),
+                None => "从未".to_string(),
+            };
+            
+            let status = match &config.status {
+                SyncStatus::Idle => "空闲".to_string(),
+                SyncStatus::Running => "运行中".to_string(),
+                SyncStatus::Failed(error) => format!("失败: {}", error),
+                SyncStatus::Completed => "完成".to_string(),
+            };
+            
+            table.add_row(Row::new(
+                vec![
+                    Cell::new(&config.name),
+                    Cell::new(&config.source),
+                    Cell::new(&config.target),
+                    Cell::new(&tables),
+                    Cell::new(&interval),
+                    Cell::new(&last_sync),
+                    Cell::new(&status),
+                ]
+            ));
+        }
+        
+        // 显示表格
+        table.printstd();
+        
+        Ok(())
+    }
+    
+    /// 删除同步配置
+    fn delete_sync(&self, name: &str) -> Result<()> {
+        // 创建同步管理器
+        let config_dir = dirs::config_dir()
+            .ok_or_else(|| anyhow!("无法确定配置目录"))?
+            .join("lumosdb");
+            
+        let mut sync_manager = SyncManager::new(&config_dir)?;
+        
+        // 删除配置
+        sync_manager.delete_config(name)?;
+        
+        println!("同步配置 '{}' 已删除", name);
+        
+        Ok(())
+    }
+    
     /// 运行REPL循环
     pub fn run(&mut self) -> Result<()> {
         // 显示欢迎信息
@@ -563,6 +771,14 @@ impl Repl {
                                 CommandType::Format(format) => self.set_format(&format)?,
                                 CommandType::Status => self.show_status()?,
                                 CommandType::Clear => self.clear_screen()?,
+                                CommandType::Sync { source, target, tables, since } => {
+                                    self.execute_sync(&source, &target, tables, since)?
+                                },
+                                CommandType::CreateSync { name, source, target, tables, interval } => {
+                                    self.create_sync(&name, &source, &target, tables, interval)?
+                                },
+                                CommandType::ListSyncs => self.list_syncs()?,
+                                CommandType::DeleteSync(name) => self.delete_sync(&name)?,
                             }
                         }
                         Err(err) => {

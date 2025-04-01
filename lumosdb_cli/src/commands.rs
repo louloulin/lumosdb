@@ -34,6 +34,25 @@ pub enum CommandType {
     Status,
     /// 清屏
     Clear,
+    /// 同步命令
+    Sync { 
+        source: String, 
+        target: String, 
+        tables: Option<Vec<String>>,
+        since: Option<String>
+    },
+    /// 创建同步配置
+    CreateSync { 
+        name: String, 
+        source: String, 
+        target: String, 
+        tables: Option<Vec<String>>,
+        interval: Option<u64>
+    },
+    /// 列出同步配置
+    ListSyncs,
+    /// 删除同步配置
+    DeleteSync(String),
 }
 
 /// 命令处理器
@@ -55,84 +74,169 @@ impl CommandProcessor {
     
     /// 解析命令
     pub fn parse_command(&self, input: &str) -> Result<CommandType> {
-        let input = input.trim();
+        // 替换变量
+        let input = self.replace_vars(input);
         
-        // 空命令
-        if input.is_empty() {
-            return Ok(CommandType::Query(input.to_string()));
-        }
-        
-        // 以\开头的元命令
+        // 首先检查是否是以反斜杠开头的命令
         if input.starts_with('\\') {
-            let parts: Vec<&str> = input[1..].trim().splitn(2, ' ').collect();
-            let cmd = parts[0].to_lowercase();
+            let parts: Vec<&str> = input.splitn(2, ' ').collect();
+            let cmd = parts[0];
             let args = parts.get(1).map(|s| s.trim()).unwrap_or("");
             
-            // 检查命令别名
-            let cmd = if let Some(alias) = self.aliases.get(&cmd) {
-                alias.clone()
-            } else {
-                cmd
-            };
-            
-            // 解析元命令
-            match cmd.as_str() {
-                "h" | "help" => Ok(CommandType::Help),
-                "c" | "connect" => Ok(CommandType::ConnectionInfo),
-                "l" | "list" => Ok(CommandType::ListTables),
-                "d" | "describe" => {
+            match cmd {
+                "\\h" | "\\help" => Ok(CommandType::Help),
+                "\\c" | "\\connect" => {
                     if args.is_empty() {
-                        Err(anyhow!("需要表名参数"))
+                        Ok(CommandType::ConnectionInfo)
                     } else {
-                        Ok(CommandType::DescribeTable(args.to_string()))
+                        // 这种情况下，这是连接到数据库的命令
+                        // 但在当前实现中，我们通过REPL处理，而不是CommandType
+                        Ok(CommandType::Query(format!("CONNECT {}", args)))
                     }
                 },
-                "e" | "export" => {
-                    let export_parts: Vec<&str> = args.splitn(2, ' ').collect();
-                    if export_parts.len() < 2 {
-                        Err(anyhow!("导出命令需要格式和文件路径，例如: \\export csv /path/to/file.csv"))
-                    } else {
-                        Ok(CommandType::Export {
-                            format: export_parts[0].to_string(),
-                            path: export_parts[1].to_string(),
-                        })
-                    }
-                },
-                "set" => {
-                    let set_parts: Vec<&str> = args.splitn(2, ' ').collect();
-                    if set_parts.len() < 2 {
-                        Err(anyhow!("设置变量需要键和值，例如: \\set format json"))
-                    } else {
-                        Ok(CommandType::Set {
-                            key: set_parts[0].to_string(),
-                            value: set_parts[1].to_string(),
-                        })
-                    }
-                },
-                "source" | "i" | "include" => {
+                "\\l" | "\\list" => Ok(CommandType::ListTables),
+                "\\d" | "\\describe" => {
                     if args.is_empty() {
-                        Err(anyhow!("需要文件路径参数"))
-                    } else {
-                        Ok(CommandType::Source(args.to_string()))
+                        return Err(anyhow!("缺少表名"));
                     }
+                    Ok(CommandType::DescribeTable(args.to_string()))
                 },
-                "q" | "quit" | "exit" => Ok(CommandType::Exit),
-                "edit" | "ed" => Ok(CommandType::Edit(if args.is_empty() { None } else { Some(args.to_string()) })),
-                "history" => Ok(CommandType::History),
-                "f" | "format" => {
+                "\\e" | "\\export" => {
+                    let parts: Vec<&str> = args.splitn(2, ' ').collect();
+                    if parts.len() < 2 {
+                        return Err(anyhow!("用法: \\export [format] [filename]"));
+                    }
+                    
+                    let format = parts[0].to_string();
+                    let path = parts[1].to_string();
+                    
+                    Ok(CommandType::Export { format, path })
+                },
+                "\\set" => {
+                    let parts: Vec<&str> = args.splitn(2, ' ').collect();
+                    if parts.len() < 2 {
+                        return Err(anyhow!("用法: \\set [key] [value]"));
+                    }
+                    
+                    let key = parts[0].to_string();
+                    let value = parts[1].to_string();
+                    
+                    Ok(CommandType::Set { key, value })
+                },
+                "\\source" | "\\i" => {
                     if args.is_empty() {
-                        Err(anyhow!("需要指定输出格式，例如: \\format json"))
-                    } else {
-                        Ok(CommandType::Format(args.to_string()))
+                        return Err(anyhow!("缺少文件路径"));
                     }
+                    Ok(CommandType::Source(args.to_string()))
                 },
-                "status" | "stat" => Ok(CommandType::Status),
-                "clear" | "cls" => Ok(CommandType::Clear),
-                _ => Err(anyhow!("未知命令: \\{}", cmd)),
+                "\\q" | "\\quit" | "\\exit" => Ok(CommandType::Exit),
+                "\\edit" | "\\ed" => {
+                    let query = if args.is_empty() {
+                        None
+                    } else {
+                        Some(args.to_string())
+                    };
+                    
+                    Ok(CommandType::Edit(query))
+                },
+                "\\history" => Ok(CommandType::History),
+                "\\f" | "\\format" => {
+                    if args.is_empty() {
+                        return Err(anyhow!("缺少格式参数"));
+                    }
+                    Ok(CommandType::Format(args.to_string()))
+                },
+                "\\status" | "\\stat" => Ok(CommandType::Status),
+                "\\clear" | "\\cls" => Ok(CommandType::Clear),
+                "\\sync" => {
+                    let parts: Vec<&str> = args.split_whitespace().collect();
+                    if parts.len() < 2 {
+                        return Err(anyhow!("用法: \\sync [source] [target] [--tables table1,table2] [--since timestamp]"));
+                    }
+                    
+                    let source = parts[0].to_string();
+                    let target = parts[1].to_string();
+                    let mut tables = None;
+                    let mut since = None;
+                    
+                    let mut i = 2;
+                    while i < parts.len() {
+                        match parts[i] {
+                            "--tables" => {
+                                if i + 1 < parts.len() {
+                                    tables = Some(parts[i + 1].split(',').map(|s| s.to_string()).collect());
+                                    i += 2;
+                                } else {
+                                    return Err(anyhow!("--tables 参数后缺少表名"));
+                                }
+                            },
+                            "--since" => {
+                                if i + 1 < parts.len() {
+                                    since = Some(parts[i + 1].to_string());
+                                    i += 2;
+                                } else {
+                                    return Err(anyhow!("--since 参数后缺少时间戳"));
+                                }
+                            },
+                            _ => {
+                                i += 1;
+                            }
+                        }
+                    }
+                    
+                    Ok(CommandType::Sync { source, target, tables, since })
+                },
+                "\\create-sync" => {
+                    let parts: Vec<&str> = args.split_whitespace().collect();
+                    if parts.len() < 3 {
+                        return Err(anyhow!("用法: \\create-sync [name] [source] [target] [--tables table1,table2] [--interval seconds]"));
+                    }
+                    
+                    let name = parts[0].to_string();
+                    let source = parts[1].to_string();
+                    let target = parts[2].to_string();
+                    let mut tables = None;
+                    let mut interval = None;
+                    
+                    let mut i = 3;
+                    while i < parts.len() {
+                        match parts[i] {
+                            "--tables" => {
+                                if i + 1 < parts.len() {
+                                    tables = Some(parts[i + 1].split(',').map(|s| s.to_string()).collect());
+                                    i += 2;
+                                } else {
+                                    return Err(anyhow!("--tables 参数后缺少表名"));
+                                }
+                            },
+                            "--interval" => {
+                                if i + 1 < parts.len() {
+                                    interval = Some(parts[i + 1].parse::<u64>().map_err(|_| anyhow!("无效的时间间隔"))?);
+                                    i += 2;
+                                } else {
+                                    return Err(anyhow!("--interval 参数后缺少秒数"));
+                                }
+                            },
+                            _ => {
+                                i += 1;
+                            }
+                        }
+                    }
+                    
+                    Ok(CommandType::CreateSync { name, source, target, tables, interval })
+                },
+                "\\list-syncs" => Ok(CommandType::ListSyncs),
+                "\\delete-sync" => {
+                    if args.is_empty() {
+                        return Err(anyhow!("缺少同步配置名称"));
+                    }
+                    Ok(CommandType::DeleteSync(args.to_string()))
+                },
+                _ => Err(anyhow!("未知命令: {}", cmd)),
             }
         } else {
-            // SQL查询命令
-            Ok(CommandType::Query(input.to_string()))
+            // 否则，将其视为SQL查询
+            Ok(CommandType::Query(input))
         }
     }
     
@@ -161,5 +265,39 @@ impl CommandProcessor {
     /// 获取所有环境变量
     pub fn get_vars(&self) -> &HashMap<String, String> {
         &self.variables
+    }
+
+    /// 替换变量
+    fn replace_vars(&self, input: &str) -> String {
+        let mut output = String::new();
+        let mut i = 0;
+        let chars: Vec<char> = input.chars().collect();
+        
+        while i < chars.len() {
+            if chars[i] == '\\' && i + 1 < chars.len() && chars[i + 1] == '\\' {
+                output.push('\\');
+                i += 2;
+            } else if chars[i] == '\\' && i + 1 < chars.len() && chars[i + 1] == '$' {
+                let mut j = i + 2;
+                while j < chars.len() && chars[j] != '$' {
+                    j += 1;
+                }
+                if j < chars.len() {
+                    let var = &input[i + 2..j];
+                    if let Some(value) = self.get_var(var) {
+                        output.push_str(value);
+                    }
+                    i = j + 1;
+                } else {
+                    output.push_str("\\$");
+                    i += 1;
+                }
+            } else {
+                output.push(chars[i]);
+                i += 1;
+            }
+        }
+        
+        output
     }
 } 
