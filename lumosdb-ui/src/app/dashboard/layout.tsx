@@ -16,6 +16,10 @@ import {
   MoonStar,
   Sun,
   Code,
+  BarChart4,
+  ActivitySquare,
+  RefreshCw,
+  Palette,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -52,6 +56,26 @@ export default function DashboardLayout({
       name: "Vector Collections",
       href: "/dashboard/vectors",
       icon: BoxSelect,
+    },
+    {
+      name: "Analytics Dashboard",
+      href: "/dashboard/analytics",
+      icon: BarChart4,
+    },
+    {
+      name: "System Monitoring",
+      href: "/dashboard/monitoring",
+      icon: ActivitySquare,
+    },
+    {
+      name: "Realtime Data",
+      href: "/dashboard/realtime",
+      icon: RefreshCw,
+    },
+    {
+      name: "Theme Settings",
+      href: "/dashboard/theme",
+      icon: Palette,
     },
     {
       name: "Settings",
