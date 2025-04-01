@@ -39,7 +39,9 @@ pub enum CommandType {
         source: String, 
         target: String, 
         tables: Option<Vec<String>>,
-        since: Option<String>
+        since: Option<String>,
+        sync_mode: Option<String>,
+        timestamp_fields: Option<Vec<String>>
     },
     /// 创建同步配置
     CreateSync { 
@@ -47,7 +49,9 @@ pub enum CommandType {
         source: String, 
         target: String, 
         tables: Option<Vec<String>>,
-        interval: Option<u64>
+        interval: Option<u64>,
+        sync_mode: Option<String>,
+        timestamp_fields: Option<Vec<String>>
     },
     /// 列出同步配置
     ListSyncs,
@@ -151,13 +155,15 @@ impl CommandProcessor {
                 "\\sync" => {
                     let parts: Vec<&str> = args.split_whitespace().collect();
                     if parts.len() < 2 {
-                        return Err(anyhow!("用法: \\sync [source] [target] [--tables table1,table2] [--since timestamp]"));
+                        return Err(anyhow!("用法: \\sync [source] [target] [--tables table1,table2] [--since timestamp] [--mode full|incremental|mirror] [--timestamp-fields field1,field2]"));
                     }
                     
                     let source = parts[0].to_string();
                     let target = parts[1].to_string();
                     let mut tables = None;
                     let mut since = None;
+                    let mut sync_mode = None;
+                    let mut timestamp_fields = None;
                     
                     let mut i = 2;
                     while i < parts.len() {
@@ -178,18 +184,46 @@ impl CommandProcessor {
                                     return Err(anyhow!("--since 参数后缺少时间戳"));
                                 }
                             },
+                            "--mode" => {
+                                if i + 1 < parts.len() {
+                                    let mode = parts[i + 1].to_lowercase();
+                                    if mode == "full" || mode == "incremental" || mode == "mirror" {
+                                        sync_mode = Some(mode);
+                                        i += 2;
+                                    } else {
+                                        return Err(anyhow!("无效的同步模式，支持的值: full, incremental, mirror"));
+                                    }
+                                } else {
+                                    return Err(anyhow!("--mode 参数后缺少同步模式"));
+                                }
+                            },
+                            "--timestamp-fields" => {
+                                if i + 1 < parts.len() {
+                                    timestamp_fields = Some(parts[i + 1].split(',').map(|s| s.to_string()).collect());
+                                    i += 2;
+                                } else {
+                                    return Err(anyhow!("--timestamp-fields 参数后缺少字段名"));
+                                }
+                            },
                             _ => {
                                 i += 1;
                             }
                         }
                     }
                     
-                    Ok(CommandType::Sync { source, target, tables, since })
+                    Ok(CommandType::Sync { 
+                        source, 
+                        target, 
+                        tables, 
+                        since,
+                        sync_mode,
+                        timestamp_fields
+                    })
                 },
                 "\\create-sync" => {
                     let parts: Vec<&str> = args.split_whitespace().collect();
                     if parts.len() < 3 {
-                        return Err(anyhow!("用法: \\create-sync [name] [source] [target] [--tables table1,table2] [--interval seconds]"));
+                        return Err(anyhow!("用法: \\create-sync [name] [source] [target] [--tables table1,table2] [--interval seconds] [--mode full|incremental|mirror] [--timestamp-fields field1,field2]"));
                     }
                     
                     let name = parts[0].to_string();
@@ -197,6 +231,8 @@ impl CommandProcessor {
                     let target = parts[2].to_string();
                     let mut tables = None;
                     let mut interval = None;
+                    let mut sync_mode = None;
+                    let mut timestamp_fields = None;
                     
                     let mut i = 3;
                     while i < parts.len() {
@@ -217,13 +253,42 @@ impl CommandProcessor {
                                     return Err(anyhow!("--interval 参数后缺少秒数"));
                                 }
                             },
+                            "--mode" => {
+                                if i + 1 < parts.len() {
+                                    let mode = parts[i + 1].to_lowercase();
+                                    if mode == "full" || mode == "incremental" || mode == "mirror" {
+                                        sync_mode = Some(mode);
+                                        i += 2;
+                                    } else {
+                                        return Err(anyhow!("无效的同步模式，支持的值: full, incremental, mirror"));
+                                    }
+                                } else {
+                                    return Err(anyhow!("--mode 参数后缺少同步模式"));
+                                }
+                            },
+                            "--timestamp-fields" => {
+                                if i + 1 < parts.len() {
+                                    timestamp_fields = Some(parts[i + 1].split(',').map(|s| s.to_string()).collect());
+                                    i += 2;
+                                } else {
+                                    return Err(anyhow!("--timestamp-fields 参数后缺少字段名"));
+                                }
+                            },
                             _ => {
                                 i += 1;
                             }
                         }
                     }
                     
-                    Ok(CommandType::CreateSync { name, source, target, tables, interval })
+                    Ok(CommandType::CreateSync { 
+                        name, 
+                        source, 
+                        target, 
+                        tables, 
+                        interval,
+                        sync_mode,
+                        timestamp_fields
+                    })
                 },
                 "\\list-syncs" => Ok(CommandType::ListSyncs),
                 "\\delete-sync" => {

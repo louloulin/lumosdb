@@ -520,108 +520,131 @@ impl Repl {
         Ok(())
     }
     
-    /// 执行同步
-    fn execute_sync(&self, source: &str, target: &str, tables: Option<Vec<String>>, since: Option<String>) -> Result<()> {
-        // 检查是否有连接
+    /// 处理同步命令
+    fn execute_sync(&mut self, source: String, target: String, tables: Option<Vec<String>>, since: Option<String>, sync_mode: Option<String>, timestamp_fields: Option<Vec<String>>) -> Result<()> {
+        // 检查是否有活动连接
         if self.connection.is_none() {
-            println!("{}", "当前没有活动连接，但同步命令不需要活动连接".yellow());
+            eprintln!("未连接到数据库。使用 'CONNECT [连接字符串]' 命令连接到数据库。");
+            return Ok(());
         }
-        
-        println!("开始同步数据...");
-        println!("源: {}", source);
-        println!("目标: {}", target);
-        
-        if let Some(tables) = &tables {
-            println!("同步表: {}", tables.join(", "));
-        } else {
-            println!("同步所有表");
-        }
-        
-        if let Some(since) = &since {
-            println!("仅同步 {} 之后的更改", since);
-        }
-        
-        println!();
-        
-        // 创建同步管理器
+
         let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow!("无法确定配置目录"))?
-            .join("lumosdb");
-            
-        let mut sync_manager = SyncManager::new(&config_dir)?;
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("lumosdb_cli");
+
+        let mut sync_manager = crate::sync::SyncManager::new(config_dir)?;
+        
+        // 设置默认值
+        let sync_mode = sync_mode.unwrap_or_else(|| "incremental".to_string());
+        let sync_mode = match sync_mode.as_str() {
+            "full" => crate::sync::SyncMode::Full,
+            "mirror" => crate::sync::SyncMode::Mirror,
+            _ => crate::sync::SyncMode::Incremental,
+        };
+        
+        let timestamp_fields = timestamp_fields.unwrap_or_else(|| vec!["updated_at".to_string(), "created_at".to_string()]);
         
         // 执行同步
-        let results = sync_manager.execute_sync(
-            &self.config,
-            source,
-            target,
-            tables.as_ref(),
+        let start_time = std::time::Instant::now();
+        let result = sync_manager.execute_sync(
+            &source, 
+            &target, 
+            tables.as_ref(), 
             since.as_deref(),
+            sync_mode,
+            &timestamp_fields
         )?;
-        
-        // 显示结果
-        let mut total_rows = 0;
-        let mut total_errors = 0;
-        
-        println!("同步结果:");
-        println!("{:-<50}", "");
-        
-        for (table, result) in &results {
-            total_rows += result.rows_synced;
+        let elapsed = start_time.elapsed();
+
+        // 处理结果，将HashMap转换为AggregateSyncResult
+        let mut aggregate = crate::sync::AggregateSyncResult {
+            total_rows: 0,
+            deleted_rows: 0,
+            tables: Vec::new(),
+            schema_updates: 0,
+            errors: Vec::new(),
+        };
+
+        for (table, result) in result {
+            aggregate.total_rows += result.rows_synced;
+            aggregate.deleted_rows += result.rows_deleted;
+            aggregate.tables.push(table);
             
-            println!("{}: {} 行同步", table, result.rows_synced);
+            if result.schema_updated {
+                aggregate.schema_updates += 1;
+            }
             
-            if let Some(errors) = &result.errors {
-                total_errors += errors.len();
-                println!("  错误:");
-                for error in errors {
-                    println!("  - {}", error.red());
+            if let Some(errs) = result.errors {
+                for err in errs {
+                    aggregate.errors.push(err);
                 }
             }
         }
+
+        // 显示结果
+        println!("同步完成！耗时: {:.2}秒", elapsed.as_secs_f64());
+        println!("总同步行数: {}", aggregate.total_rows);
+        println!("总删除行数: {}", aggregate.deleted_rows);
+        println!("更新的表: {}", aggregate.tables.join(", "));
+        println!("架构更新: {}", aggregate.schema_updates);
         
-        println!("{:-<50}", "");
-        println!("总计: {} 个表，{} 行，{} 个错误", results.len(), total_rows, total_errors);
-        
+        if !aggregate.errors.is_empty() {
+            println!("错误: {}", aggregate.errors.join(", "));
+        }
+
         Ok(())
     }
     
-    /// 创建同步配置
-    fn create_sync(&self, name: &str, source: &str, target: &str, tables: Option<Vec<String>>, interval: Option<u64>) -> Result<()> {
-        // 创建同步管理器
+    /// 处理创建同步配置命令
+    fn execute_create_sync(&mut self, name: String, source: String, target: String, tables: Option<Vec<String>>, interval: Option<u64>, sync_mode: Option<String>, timestamp_fields: Option<Vec<String>>) -> Result<()> {
         let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow!("无法确定配置目录"))?
-            .join("lumosdb");
-            
-        let mut sync_manager = SyncManager::new(&config_dir)?;
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("lumosdb_cli");
+
+        let mut sync_manager = crate::sync::SyncManager::new(config_dir)?;
+        
+        // 设置默认值
+        let sync_mode = sync_mode.unwrap_or_else(|| "incremental".to_string());
+        let sync_mode = match sync_mode.as_str() {
+            "full" => crate::sync::SyncMode::Full,
+            "mirror" => crate::sync::SyncMode::Mirror,
+            _ => crate::sync::SyncMode::Incremental,
+        };
+        
+        let timestamp_fields = timestamp_fields.unwrap_or_else(|| vec!["updated_at".to_string(), "created_at".to_string()]);
         
         // 创建同步配置
-        let config = SyncConfig::new(
-            name.to_string(),
-            source.to_string(),
-            target.to_string(),
-            tables,
+        sync_manager.create_sync(
+            &name, 
+            &source, 
+            &target, 
+            tables.as_deref(), 
             interval,
-        );
+            sync_mode,
+            &timestamp_fields
+        )?;
         
-        // 添加到管理器
-        sync_manager.add_config(config)?;
+        println!("已创建同步配置: {}", name);
         
-        println!("同步配置 '{}' 已创建", name);
+        // 检查同步器是否在运行
+        let is_running = true; // 在正式实现中需要从SyncManager获取
         
+        // 如果设置了间隔，且定时器尚未启动
+        if interval.is_some() && !is_running {
+            // 启动定时器
+            println!("已启动自动同步调度器");
+        }
+
         Ok(())
     }
     
-    /// 列出同步配置
+    /// 处理列出同步配置命令
     fn list_syncs(&self) -> Result<()> {
-        // 创建同步管理器
         let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow!("无法确定配置目录"))?
-            .join("lumosdb");
-            
-        let sync_manager = SyncManager::new(&config_dir)?;
-        
-        // 获取所有配置
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("lumosdb_cli");
+
+        let sync_manager = crate::sync::SyncManager::new(config_dir)?;
         let configs = sync_manager.get_configs();
         
         if configs.is_empty() {
@@ -630,83 +653,73 @@ impl Repl {
         }
         
         // 创建表格
-        let mut table = Table::new();
+        let mut table = prettytable::Table::new();
+        table.set_titles(prettytable::Row::new(vec![
+            prettytable::Cell::new("名称"),
+            prettytable::Cell::new("源"),
+            prettytable::Cell::new("目标"),
+            prettytable::Cell::new("表"),
+            prettytable::Cell::new("同步模式"),
+            prettytable::Cell::new("时间间隔"),
+            prettytable::Cell::new("上次同步"),
+            prettytable::Cell::new("状态"),
+        ]));
         
-        // 添加表头
-        table.set_titles(Row::new(
-            vec![
-                Cell::new("名称"),
-                Cell::new("源"),
-                Cell::new("目标"),
-                Cell::new("表"),
-                Cell::new("间隔"),
-                Cell::new("最后同步时间"),
-                Cell::new("状态"),
-            ]
-        ));
-        
-        // 添加数据行
         for (_, config) in configs {
+            // 格式化数据
             let tables = match &config.tables {
-                Some(tables) => {
-                    if tables.len() > 3 {
-                        format!("{}, ... (共{}个)", tables[0..3].join(", "), tables.len())
-                    } else {
-                        tables.join(", ")
-                    }
-                },
-                None => "全部".to_string(),
+                Some(tables) => tables.join(","),
+                None => "所有表".to_string(),
             };
             
             let interval = match config.interval {
-                Some(interval) => format!("{}秒", interval),
+                Some(interval) => format!("每 {} 秒", interval),
                 None => "手动".to_string(),
             };
             
-            let last_sync = match &config.last_sync {
-                Some(time) => time.format("%Y-%m-%d %H:%M:%S").to_string(),
+            let last_sync = match config.last_sync {
+                Some(time) => time.to_string(),
                 None => "从未".to_string(),
             };
             
-            let status = match &config.status {
-                SyncStatus::Idle => "空闲".to_string(),
-                SyncStatus::Running => "运行中".to_string(),
-                SyncStatus::Failed(error) => format!("失败: {}", error),
-                SyncStatus::Completed => "完成".to_string(),
+            let sync_mode = match config.sync_mode {
+                crate::sync::SyncMode::Full => "全量".to_string(),
+                crate::sync::SyncMode::Incremental => "增量".to_string(),
+                crate::sync::SyncMode::Mirror => "镜像".to_string(),
             };
             
-            table.add_row(Row::new(
-                vec![
-                    Cell::new(&config.name),
-                    Cell::new(&config.source),
-                    Cell::new(&config.target),
-                    Cell::new(&tables),
-                    Cell::new(&interval),
-                    Cell::new(&last_sync),
-                    Cell::new(&status),
-                ]
-            ));
+            let status = match &config.status {
+                crate::sync::SyncStatus::Idle => "就绪".to_string(),
+                crate::sync::SyncStatus::Running => "正在运行".to_string(),
+                crate::sync::SyncStatus::Error(error) => format!("错误: {}", error),
+            };
+            
+            table.add_row(prettytable::Row::new(vec![
+                prettytable::Cell::new(&config.name),
+                prettytable::Cell::new(&config.source),
+                prettytable::Cell::new(&config.target),
+                prettytable::Cell::new(&tables),
+                prettytable::Cell::new(&sync_mode),
+                prettytable::Cell::new(&interval),
+                prettytable::Cell::new(&last_sync),
+                prettytable::Cell::new(&status),
+            ]));
         }
         
-        // 显示表格
         table.printstd();
-        
         Ok(())
     }
     
-    /// 删除同步配置
-    fn delete_sync(&self, name: &str) -> Result<()> {
-        // 创建同步管理器
+    /// 处理删除同步配置命令
+    fn delete_sync(&mut self, name: String) -> Result<()> {
         let config_dir = dirs::config_dir()
-            .ok_or_else(|| anyhow!("无法确定配置目录"))?
-            .join("lumosdb");
-            
-        let mut sync_manager = SyncManager::new(&config_dir)?;
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join("lumosdb_cli");
+
+        let mut sync_manager = crate::sync::SyncManager::new(config_dir)?;
         
-        // 删除配置
-        sync_manager.delete_config(name)?;
-        
-        println!("同步配置 '{}' 已删除", name);
+        sync_manager.delete_config(&name)?;
+        println!("删除同步配置: {}", name);
         
         Ok(())
     }
@@ -771,14 +784,14 @@ impl Repl {
                                 CommandType::Format(format) => self.set_format(&format)?,
                                 CommandType::Status => self.show_status()?,
                                 CommandType::Clear => self.clear_screen()?,
-                                CommandType::Sync { source, target, tables, since } => {
-                                    self.execute_sync(&source, &target, tables, since)?
+                                CommandType::Sync { source, target, tables, since, sync_mode, timestamp_fields } => {
+                                    self.execute_sync(source, target, tables, since, sync_mode, timestamp_fields)?
                                 },
-                                CommandType::CreateSync { name, source, target, tables, interval } => {
-                                    self.create_sync(&name, &source, &target, tables, interval)?
+                                CommandType::CreateSync { name, source, target, tables, interval, sync_mode, timestamp_fields } => {
+                                    self.execute_create_sync(name, source, target, tables, interval, sync_mode, timestamp_fields)?
                                 },
                                 CommandType::ListSyncs => self.list_syncs()?,
-                                CommandType::DeleteSync(name) => self.delete_sync(&name)?,
+                                CommandType::DeleteSync(name) => self.delete_sync(name)?,
                             }
                         }
                         Err(err) => {
