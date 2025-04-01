@@ -1,36 +1,18 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Button } from "@/components/ui/button"
+import { Metadata } from "next"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ScrollArea } from "@/components/ui/scroll-area"
+import { ResponsiveContainer } from "@/components/ui/responsive-container"
 import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
-import { Progress } from "@/components/ui/progress"
-import { format } from "date-fns"
-import { 
-  BarChart, 
-  ActivitySquare, 
-  AlertCircle, 
-  ArrowDownIcon, 
-  ArrowUpIcon, 
-  Clock, 
-  Database, 
-  Download, 
-  FileText, 
-  Filter, 
-  HardDrive, 
-  Laptop, 
-  Loader2, 
-  RefreshCw, 
-  Search, 
-  Server, 
-  Bookmark
-} from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Cpu, Database, HardDrive, AlertCircle, Activity, MemoryStick, Clock } from "lucide-react"
+
+export const metadata: Metadata = {
+  title: "System Monitoring | LumosDB",
+  description: "System monitoring and logs for LumosDB",
+}
 
 // 模拟系统状态数据
 const systemStatus = {
@@ -98,6 +80,14 @@ interface LogEntry {
   component: string;
   message: string;
   details: string;
+}
+
+interface SystemMetric {
+  name: string
+  value: string | number
+  unit?: string
+  status: "healthy" | "warning" | "critical"
+  icon: React.ReactNode
 }
 
 export default function MonitoringPage() {
@@ -197,344 +187,244 @@ export default function MonitoringPage() {
     URL.revokeObjectURL(url);
   };
   
+  // Mock data for system metrics
+  const systemMetrics: SystemMetric[] = [
+    { 
+      name: "CPU Usage", 
+      value: 32, 
+      unit: "%", 
+      status: "healthy",
+      icon: <Cpu className="h-4 w-4" />
+    },
+    { 
+      name: "Memory Usage", 
+      value: 2.1, 
+      unit: "GB", 
+      status: "healthy",
+      icon: <MemoryStick className="h-4 w-4" />
+    },
+    { 
+      name: "Disk Space", 
+      value: 45, 
+      unit: "%", 
+      status: "healthy",
+      icon: <HardDrive className="h-4 w-4" />
+    },
+    { 
+      name: "Database Size", 
+      value: 256, 
+      unit: "MB", 
+      status: "healthy",
+      icon: <Database className="h-4 w-4" />
+    },
+    { 
+      name: "Active Connections", 
+      value: 24, 
+      status: "healthy",
+      icon: <Activity className="h-4 w-4" />
+    },
+    { 
+      name: "Uptime", 
+      value: "4d 12h 37m", 
+      status: "healthy",
+      icon: <Clock className="h-4 w-4" />
+    },
+  ]
+
+  // Mock data for logs
+  const logsData: LogEntry[] = [
+    {
+      timestamp: "2023-06-15 14:32:01",
+      level: "info",
+      message: "SQL query executed successfully",
+      source: "SQL Engine"
+    },
+    {
+      timestamp: "2023-06-15 14:30:45",
+      level: "info",
+      message: "New connection established from 192.168.1.24",
+      source: "Network"
+    },
+    {
+      timestamp: "2023-06-15 14:28:17",
+      level: "warning",
+      message: "Slow query detected (execution time: 1.5s)",
+      source: "SQL Engine"
+    },
+    {
+      timestamp: "2023-06-15 14:25:03",
+      level: "error",
+      message: "Failed to connect to vector database",
+      source: "Vector Engine"
+    },
+    {
+      timestamp: "2023-06-15 14:24:30",
+      level: "info",
+      message: "Backup completed successfully",
+      source: "Backup System"
+    },
+    {
+      timestamp: "2023-06-15 14:22:12",
+      level: "info",
+      message: "System startup completed",
+      source: "System"
+    },
+    {
+      timestamp: "2023-06-15 14:21:58",
+      level: "info",
+      message: "Database initialized",
+      source: "Database"
+    },
+    {
+      timestamp: "2023-06-15 14:21:45",
+      level: "info",
+      message: "Configuration loaded",
+      source: "Config"
+    }
+  ]
+
+  const getStatusColor = (status: SystemMetric["status"]) => {
+    switch (status) {
+      case "healthy":
+        return "bg-green-500"
+      case "warning":
+        return "bg-yellow-500"
+      case "critical":
+        return "bg-red-500"
+      default:
+        return "bg-gray-500"
+    }
+  }
+
+  const getLogLevelBadge = (level: LogEntry["type"]) => {
+    switch (level) {
+      case "info":
+        return <Badge className="bg-blue-500">Info</Badge>
+      case "warn":
+        return <Badge className="bg-yellow-500">Warning</Badge>
+      case "error":
+        return <Badge className="bg-red-500">Error</Badge>
+      case "debug":
+        return <Badge className="bg-green-500">Debug</Badge>
+      default:
+        return <Badge>Unknown</Badge>
+    }
+  }
+
   return (
-    <div className="container py-6">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold">系统监控</h1>
-        <p className="text-muted-foreground mt-2">
-          监控系统性能和查看应用日志
-        </p>
+    <ResponsiveContainer className="space-y-4 p-4 pt-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-bold tracking-tight">System Monitoring</h2>
       </div>
       
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-6">
-          <TabsTrigger value="system">
-            <Server className="mr-2 h-4 w-4" />
-            系统状态
-          </TabsTrigger>
-          <TabsTrigger value="logs">
-            <FileText className="mr-2 h-4 w-4" />
-            应用日志
-          </TabsTrigger>
+      <Alert>
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>System Status</AlertTitle>
+        <AlertDescription>
+          System is operating normally. Last checked: June 15, 2023 14:45:00.
+        </AlertDescription>
+      </Alert>
+
+      <Tabs defaultValue="metrics" className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="metrics">System Metrics</TabsTrigger>
+          <TabsTrigger value="logs">System Logs</TabsTrigger>
+          <TabsTrigger value="performance">Performance</TabsTrigger>
         </TabsList>
         
-        <TabsContent value="system" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-md flex items-center">
-                  <ActivitySquare className="mr-2 h-4 w-4" /> CPU 使用率
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>使用率</span>
-                    <span className="font-medium">{systemStatus.cpu}%</span>
+        <TabsContent value="metrics" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {systemMetrics.map((metric, index) => (
+              <Card key={index}>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium">
+                    {metric.name}
+                  </CardTitle>
+                  <div className="flex items-center gap-2">
+                    <div 
+                      className={`h-2 w-2 rounded-full ${getStatusColor(metric.status)}`} 
+                      title={`Status: ${metric.status}`}
+                    />
+                    {metric.icon}
                   </div>
-                  <Progress value={systemStatus.cpu} className="h-2" />
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-md flex items-center">
-                  <Laptop className="mr-2 h-4 w-4" /> 内存使用率
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>使用率</span>
-                    <span className="font-medium">{systemStatus.memory}%</span>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">
+                    {metric.value}{metric.unit || ""}
                   </div>
-                  <Progress value={systemStatus.memory} className="h-2" />
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-md flex items-center">
-                  <HardDrive className="mr-2 h-4 w-4" /> 磁盘使用率
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span>使用率</span>
-                    <span className="font-medium">{systemStatus.disk}%</span>
-                  </div>
-                  <Progress value={systemStatus.disk} className="h-2" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-md flex items-center">
-                  <Database className="mr-2 h-4 w-4" /> 数据库状态
-                </CardTitle>
-                <CardDescription>
-                  各数据库状态与统计信息
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {systemStatus.databases.map((db, index) => (
-                    <div key={index} className="border-b pb-3 last:border-0 last:pb-0">
-                      <div className="flex justify-between items-center mb-1">
-                        <div className="flex items-center">
-                          <Database className="h-4 w-4 mr-2 text-muted-foreground" />
-                          <span className="font-medium">{db.name}</span>
-                        </div>
-                        <Badge variant="outline">{db.size}</Badge>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
-                        <div>表/集合: {db.tables || db.collections}</div>
-                        <div>最后备份: {db.lastBackup}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-md flex items-center">
-                  <BarChart className="mr-2 h-4 w-4" /> 网络与系统信息
-                </CardTitle>
-                <CardDescription>
-                  系统运行状况与网络传输统计
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
-                      <span className="text-sm">系统运行时间</span>
-                    </div>
-                    <Badge variant="outline">{systemStatus.uptime}</Badge>
-                  </div>
-                  
-                  <Separator />
-                  
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">网络传输</span>
-                    </div>
-                    
-                    <div className="flex items-center justify-between py-1">
-                      <div className="flex items-center">
-                        <ArrowUpIcon className="h-4 w-4 mr-2 text-green-500" />
-                        <span className="text-sm">上传</span>
-                      </div>
-                      <span className="text-sm font-medium">{systemStatus.network.up} MB/s</span>
-                    </div>
-                    
-                    <div className="flex items-center justify-between py-1">
-                      <div className="flex items-center">
-                        <ArrowDownIcon className="h-4 w-4 mr-2 text-blue-500" />
-                        <span className="text-sm">下载</span>
-                      </div>
-                      <span className="text-sm font-medium">{systemStatus.network.down} MB/s</span>
-                    </div>
-                  </div>
-                  
-                  <Separator />
-                  
-                  <div className="flex justify-center">
-                    <Button variant="outline" onClick={refreshData}>
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      刷新监控数据
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                  <p className="text-xs text-muted-foreground">
+                    {metric.status === "healthy" ? "Normal range" : 
+                     metric.status === "warning" ? "Above normal" : "Critical level"}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </TabsContent>
         
-        <TabsContent value="logs" className="space-y-6">
+        <TabsContent value="logs" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle className="text-md flex items-center">
-                <FileText className="mr-2 h-4 w-4" /> 应用日志
-              </CardTitle>
+              <CardTitle>System Logs</CardTitle>
               <CardDescription>
-                查看和分析系统日志
+                Recent system activities and events
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                {logsData.map((log, index) => (
+                  <div key={index} className="flex flex-col space-y-1 rounded-md border p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {getLogLevelBadge(log.type)}
+                        <span className="font-medium">{log.component}</span>
+                      </div>
+                      <span className="text-sm text-muted-foreground">
+                        {format(log.timestamp, "yyyy-MM-dd HH:mm:ss")}
+                      </span>
+                    </div>
+                    <p className="text-sm">{log.message}</p>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="performance" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Query Performance</CardTitle>
+              <CardDescription>
+                Top 5 slowest queries in the last 24 hours
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="搜索日志消息..."
-                      className="pl-8"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-                  
-                  <Select value={logTypeFilter} onValueChange={setLogTypeFilter}>
-                    <SelectTrigger className="w-[130px]">
-                      <SelectValue placeholder="日志类型" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部类型</SelectItem>
-                      <SelectItem value="info">信息</SelectItem>
-                      <SelectItem value="warn">警告</SelectItem>
-                      <SelectItem value="error">错误</SelectItem>
-                      <SelectItem value="debug">调试</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  <Select value={componentFilter} onValueChange={setComponentFilter}>
-                    <SelectTrigger className="w-[130px]">
-                      <SelectValue placeholder="组件" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">全部组件</SelectItem>
-                      <SelectItem value="sqlite">SQLite</SelectItem>
-                      <SelectItem value="duckdb">DuckDB</SelectItem>
-                      <SelectItem value="vector">向量存储</SelectItem>
-                      <SelectItem value="system">系统</SelectItem>
-                      <SelectItem value="api">API</SelectItem>
-                      <SelectItem value="auth">认证</SelectItem>
-                    </SelectContent>
-                  </Select>
-                  
-                  <Button variant="outline" size="icon" onClick={resetFilters} title="重置过滤器">
-                    <Filter className="h-4 w-4" />
-                  </Button>
-                  
-                  <Button variant="outline" size="icon" onClick={showBookmarkedOnly} title="仅显示书签">
-                    <Bookmark className="h-4 w-4" />
-                  </Button>
-                  
-                  <Button variant="outline" size="icon" onClick={downloadLogs} title="下载日志">
-                    <Download className="h-4 w-4" />
-                  </Button>
-                  
-                  <Button variant="outline" size="icon" onClick={refreshData} title="刷新日志">
-                    <RefreshCw className="h-4 w-4" />
-                  </Button>
-                </div>
-                
-                <div className="border rounded-md">
-                  <div className="grid grid-cols-12 bg-muted py-2 px-4 text-xs font-medium border-b">
-                    <div className="col-span-2">时间</div>
-                    <div className="col-span-1">级别</div>
-                    <div className="col-span-2">组件</div>
-                    <div className="col-span-7">消息</div>
-                  </div>
-                  
-                  {isLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                      <span>加载日志...</span>
+                {Array.from({length: 5}).map((_, index) => (
+                  <div key={index} className="rounded-md border p-3">
+                    <div className="flex justify-between mb-1">
+                      <span className="font-medium text-sm">
+                        {["SELECT", "INSERT", "UPDATE", "JOIN", "ANALYZE"][index]} query
+                      </span>
+                      <Badge variant="outline">{(Math.random() * 2 + 0.5).toFixed(2)}s</Badge>
                     </div>
-                  ) : filteredLogs.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                      <FileText className="h-8 w-8 mb-2" />
-                      <span>没有找到匹配的日志</span>
-                    </div>
-                  ) : (
-                    <ScrollArea className="h-[400px]">
-                      {filteredLogs.map((log) => (
-                        <div 
-                          key={log.id}
-                          className={`grid grid-cols-12 py-2 px-4 border-b text-sm hover:bg-muted/50 cursor-pointer ${selectedLog?.id === log.id ? 'bg-muted' : ''}`}
-                          onClick={() => setSelectedLog(log.id === selectedLog?.id ? null : log)}
-                        >
-                          <div className="col-span-2 text-muted-foreground">
-                            {format(log.timestamp, "yyyy-MM-dd HH:mm:ss")}
-                          </div>
-                          <div className="col-span-1">
-                            <LogLevelBadge type={log.type} />
-                          </div>
-                          <div className="col-span-2 font-mono text-xs">{log.component}</div>
-                          <div className="col-span-6 truncate">{log.message}</div>
-                          <div className="col-span-1 flex justify-end">
-                            <Button 
-                              variant="ghost" 
-                              size="icon" 
-                              className="h-5 w-5" 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                toggleBookmark(log.id);
-                              }}
-                            >
-                              <Bookmark 
-                                className={`h-4 w-4 ${bookmarkedLogs.includes(log.id) ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'}`} 
-                              />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </ScrollArea>
-                  )}
-                </div>
-                
-                {selectedLog && (
-                  <Card>
-                    <CardHeader className="py-3">
-                      <CardTitle className="text-sm">日志详情</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-2">
-                        <div className="grid grid-cols-2 gap-2 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">ID:</span> {selectedLog.id}
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">时间:</span> {format(selectedLog.timestamp, "yyyy-MM-dd HH:mm:ss")}
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">级别:</span> <LogLevelBadge type={selectedLog.type} />
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">组件:</span> {selectedLog.component}
-                          </div>
-                        </div>
-                        <div className="text-sm">
-                          <span className="text-muted-foreground">消息:</span> {selectedLog.message}
-                        </div>
-                        <div className="text-sm">
-                          <span className="text-muted-foreground">详情:</span>
-                          <pre className="mt-1 p-2 bg-muted rounded-md text-xs whitespace-pre-wrap">{selectedLog.details}</pre>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                    <p className="text-sm text-muted-foreground font-mono overflow-x-auto whitespace-nowrap">
+                      {[
+                        "SELECT * FROM users WHERE last_login > DATE_SUB(NOW(), INTERVAL 7 DAY)",
+                        "INSERT INTO logs (timestamp, user_id, action) VALUES (NOW(), 42, 'login')",
+                        "UPDATE products SET stock = stock - 1 WHERE id = 123",
+                        "SELECT o.id, c.name FROM orders o JOIN customers c ON o.customer_id = c.id",
+                        "ANALYZE TABLE large_dataset"
+                      ][index]}
+                    </p>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
-  );
-}
-
-function LogLevelBadge({ type }: { type: string }) {
-  switch (type) {
-    case 'info':
-      return <Badge variant="outline" className="bg-blue-500/10 text-blue-500 border-blue-500/20">信息</Badge>;
-    case 'warn':
-      return <Badge variant="outline" className="bg-yellow-500/10 text-yellow-500 border-yellow-500/20">警告</Badge>;
-    case 'error':
-      return <Badge variant="outline" className="bg-red-500/10 text-red-500 border-red-500/20">错误</Badge>;
-    case 'debug':
-      return <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/20">调试</Badge>;
-    default:
-      return <Badge variant="outline">{type}</Badge>;
-  }
+    </ResponsiveContainer>
+  )
 } 

@@ -59,34 +59,42 @@
   ],
   "screenshots": [
     {
-      "src": "/screenshots/desktop.png",
+      "src": "/screenshots/desktop.svg",
       "sizes": "1280x800",
-      "type": "image/png",
-      "platform": "web",
-      "label": "LumosDB桌面视图"
+      "type": "image/svg+xml",
+      "form_factor": "wide",
+      "label": "LumosDB Desktop Dashboard"
     },
     {
-      "src": "/screenshots/mobile.png",
-      "sizes": "750x1334",
-      "type": "image/png",
-      "platform": "web",
-      "label": "LumosDB移动视图"
+      "src": "/screenshots/mobile.svg",
+      "sizes": "390x844",
+      "type": "image/svg+xml",
+      "form_factor": "narrow",
+      "label": "LumosDB Mobile Dashboard"
     }
   ],
   "shortcuts": [
     {
-      "name": "SQL编辑器",
-      "short_name": "SQL",
-      "description": "打开SQL编辑器",
+      "name": "SQL Editor",
       "url": "/dashboard/sql-editor",
-      "icons": [{ "src": "/icons/sql-editor.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/icons/icon-96x96.svg",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
     },
     {
-      "name": "向量集合",
-      "short_name": "向量",
-      "description": "查看向量集合",
-      "url": "/dashboard/vectors",
-      "icons": [{ "src": "/icons/vectors.png", "sizes": "192x192" }]
+      "name": "Vector Search",
+      "url": "/dashboard/vectors/search",
+      "icons": [
+        {
+          "src": "/icons/icon-96x96.svg",
+          "sizes": "96x96",
+          "type": "image/svg+xml"
+        }
+      ]
     }
   ],
   "lang": "zh-CN",
