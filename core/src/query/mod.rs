@@ -621,48 +621,45 @@ impl QueryExecutor {
         
         // 4. Insert data into DuckDB
         if !rows.is_empty() {
-            // Build INSERT statement with placeholders
-            let placeholders = std::iter::repeat("?")
-                .take(columns.len())
-                .collect::<Vec<_>>()
-                .join(", ");
+            // For DuckDB, use direct SQL generation instead of parameterized queries
+            // This approach is less secure but works around parameter type issues
+            let duckdb_conn = self.duckdb.connection()?;
             
-            let insert_sql = format!("INSERT INTO {} ({}) VALUES ({})",
-                                   temp_table, column_names, placeholders);
+            // Start a transaction
+            duckdb_conn.execute("BEGIN TRANSACTION", [])?;
             
-            // Insert in batches
-            let batch_size = 1000;
-            let conn = self.duckdb.connection()?;
-            
-            for batch in rows.chunks(batch_size) {
-                for row in batch {
-                    // 首先收集所有临时字符串
-                    let mut string_values = Vec::new();
-                    
-                    // 创建参数向量
-                    let mut params: Vec<String> = Vec::with_capacity(columns.len());
-                    
-                    // 处理每个列的值
-                    for col in &columns {
+            for row in rows {
+                // Build the VALUES part of the SQL with directly inserted values
+                // This is a workaround for the parameter type mismatch
+                let values = columns.iter()
+                    .map(|col| {
                         if let Some(value) = row.get(&col.name) {
-                            params.push(value.clone());
+                            // Values need proper SQL escaping based on type
+                            match col.data_type.to_uppercase().as_str() {
+                                "INTEGER" => value.clone(), // No quotes for numbers
+                                "REAL" => value.clone(),    // No quotes for numbers
+                                "TEXT" => format!("'{}'", value.replace("'", "''")), // Escape quotes
+                                "BLOB" => format!("'{}'", value.replace("'", "''")), // As string
+                                _ => format!("'{}'", value.replace("'", "''"))       // Default as string
+                            }
                         } else {
-                            params.push("NULL".to_string());
+                            "NULL".to_string()
                         }
-                    }
-                    
-                    // Convert string values to SQL parameters
-                    let sql_params: Vec<&dyn rusqlite::ToSql> = params.iter()
-                        .map(|s| s as &dyn rusqlite::ToSql)
-                        .collect();
-                    
-                    // 执行插入操作
-                    conn.execute(&insert_sql, &sql_params)?;
-                }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                
+                // Construct and execute INSERT statement
+                let insert_sql = format!(
+                    "INSERT INTO {} ({}) VALUES ({})",
+                    temp_table, column_names, values
+                );
+                
+                duckdb_conn.execute(&insert_sql, [])?;
             }
             
-            conn.execute("BEGIN", &[])?;
-            conn.execute("COMMIT", &[])?;
+            // Commit the transaction
+            duckdb_conn.execute("COMMIT", [])?;
         }
         
         // 5. Create a view that maps to the original table name
@@ -755,35 +752,54 @@ impl QueryExecutor {
                 .join(", ");
             
             let insert_sql = format!("INSERT INTO {} ({}) VALUES ({})",
-                                   temp_table, column_names, placeholders);
+                               temp_table, column_names, placeholders);
             
             // Insert in batches
             let batch_size = 1000;
-            let conn = self.sqlite.connection()?;
+            let sqlite_conn = self.sqlite.connection()?;
+            
+            // Start a transaction
+            sqlite_conn.execute("BEGIN", &[])?;
             
             for batch in rows.chunks(batch_size) {
                 for row in batch {
-                    // 收集所有值
-                    let mut params = Vec::with_capacity(columns.len());
+                    // Convert JSON values to SQLite parameters
+                    let mut params: Vec<rusqlite::types::Value> = Vec::with_capacity(columns.len());
                     
-                    for i in 0..columns.len() {
-                        let column_name = &columns[i].0;
-                        // 将值转换为适当的参数
-                        params.push(format!("{}", row[i]));
+                    for (i, (_, data_type)) in columns.iter().enumerate() {
+                        let value = if i < row.len() {
+                            match &row[i] {
+                                JsonValue::Null => rusqlite::types::Value::Null,
+                                JsonValue::Bool(b) => rusqlite::types::Value::Integer(*b as i64),
+                                JsonValue::Number(n) => {
+                                    if n.is_i64() {
+                                        rusqlite::types::Value::Integer(n.as_i64().unwrap())
+                                    } else {
+                                        rusqlite::types::Value::Real(n.as_f64().unwrap_or(0.0))
+                                    }
+                                },
+                                JsonValue::String(s) => rusqlite::types::Value::Text(s.clone()),
+                                _ => rusqlite::types::Value::Null,
+                            }
+                        } else {
+                            rusqlite::types::Value::Null
+                        };
+                        
+                        params.push(value);
                     }
                     
-                    // Convert string values to SQL parameters
-                    let sql_params: Vec<&dyn rusqlite::ToSql> = params.iter()
-                        .map(|s| s as &dyn rusqlite::ToSql)
+                    // Convert values to ToSql references
+                    let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter()
+                        .map(|p| p as &dyn rusqlite::ToSql)
                         .collect();
                     
-                    // 执行插入操作
-                    conn.execute(&insert_sql, &sql_params)?;
+                    // Execute insert
+                    sqlite_conn.execute(&insert_sql, &param_refs[..])?;
                 }
             }
             
-            conn.execute("BEGIN", &[])?;
-            conn.execute("COMMIT", &[])?;
+            // Commit transaction
+            sqlite_conn.execute("COMMIT", &[])?;
         }
         
         // 5. Create a view that maps to the original table name
