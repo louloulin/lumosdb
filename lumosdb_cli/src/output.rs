@@ -2,7 +2,7 @@ use crate::config::CliConfig;
 use crate::connection::QueryResult;
 use anyhow::Result;
 use colored::Colorize;
-use prettytable::{format, Table};
+use prettytable::{format, Table, Row, Cell};
 use std::io::{self, Write};
 
 /// 输出格式
@@ -92,15 +92,15 @@ impl<'a> ResultFormatter<'a> {
                     c.to_string()
                 }
             }).collect::<Vec<_>>();
-            table.set_titles(prettytable::row::Row::new(
-                headers.iter().map(|h| prettytable::cell::Cell::new(h)).collect()
+            table.set_titles(Row::new(
+                headers.iter().map(|h| Cell::new(h)).collect()
             ));
         }
         
         // 添加数据行
         for row in &result.rows {
-            table.add_row(prettytable::row::Row::new(
-                row.iter().map(|c| prettytable::cell::Cell::new(c)).collect()
+            table.add_row(Row::new(
+                row.iter().map(|c| Cell::new(c)).collect()
             ));
         }
         
@@ -195,7 +195,7 @@ impl<'a> ResultFormatter<'a> {
                     let col_name = if self.config.use_colors {
                         format!("{}: ", col).green()
                     } else {
-                        format!("{}: ", col)
+                        format!("{}: ", col).normal()
                     };
                     
                     println!("{}{}", col_name, row[col_idx]);

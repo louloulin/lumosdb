@@ -10,20 +10,20 @@ use clap::{Parser, Subcommand};
 use config::CliConfig;
 use std::path::PathBuf;
 
-/// LumosDB 命令行工具 - 用于与Lumos-DB进行交互的CLI工具
+/// LumosDB CLI Tool - A command-line interface for Lumos-DB
 #[derive(Parser)]
 #[command(name = "lumosdb")]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    /// 配置文件路径
+    /// Path to config file
     #[arg(short, long, value_name = "FILE")]
     config: Option<PathBuf>,
 
-    /// 连接字符串，格式: [sqlite|duckdb]://path/to/database
+    /// Connection string, format: [sqlite|duckdb]://path/to/database
     #[arg(short, long)]
     connect: Option<String>,
 
-    /// 启用调试输出
+    /// Enable debug output
     #[arg(short, long)]
     debug: bool,
 
@@ -33,36 +33,36 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// 执行SQL查询并退出
+    /// Execute SQL query and exit
     Exec {
-        /// SQL查询语句
+        /// SQL query
         #[arg(required = true)]
         query: String,
     },
-    /// 批量执行SQL文件
+    /// Batch execute SQL file
     File {
-        /// SQL文件路径
+        /// SQL file path
         #[arg(required = true)]
         path: PathBuf,
     },
 }
 
 fn main() -> Result<()> {
-    // 初始化日志
+    // Initialize logging
     env_logger::init();
 
-    // 解析命令行参数
+    // Parse command line arguments
     let cli = Cli::parse();
 
-    // 设置调试模式
+    // Set debug mode if requested
     if cli.debug {
         std::env::set_var("RUST_LOG", "debug");
     }
 
-    // 加载配置
+    // Load configuration
     let config = CliConfig::load(cli.config.as_deref())?;
-
-    // 处理命令
+    
+    // Handle commands
     match &cli.command {
         Some(Commands::Exec { query }) => {
             execute_query(&config, &cli.connect, query)?;
@@ -71,7 +71,7 @@ fn main() -> Result<()> {
             execute_file(&config, &cli.connect, path)?;
         }
         None => {
-            // 启动交互式REPL
+            // Start interactive REPL
             start_repl(&config, &cli.connect)?;
         }
     }
@@ -79,20 +79,20 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// 执行单个SQL查询
+/// Execute a single SQL query
 fn execute_query(config: &CliConfig, connect: &Option<String>, query: &str) -> Result<()> {
     let mut repl = repl::Repl::new(config, connect.clone())?;
     repl.execute_query(query)
 }
 
-/// 执行SQL文件
+/// Execute SQL file
 fn execute_file(config: &CliConfig, connect: &Option<String>, path: &PathBuf) -> Result<()> {
     let mut repl = repl::Repl::new(config, connect.clone())?;
     repl.execute_file(path)
 }
 
-/// 启动交互式REPL
+/// Start interactive REPL
 fn start_repl(config: &CliConfig, connect: &Option<String>) -> Result<()> {
     let mut repl = repl::Repl::new(config, connect.clone())?;
-    repl.run().context("REPL执行失败")
+    repl.run().context("REPL execution failed")
 } 

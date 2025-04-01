@@ -11,6 +11,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
+use prettytable::{Table, Row, Cell};
 
 /// REPL状态
 pub struct Repl {
@@ -408,17 +409,17 @@ impl Repl {
                 }
                 _ => {
                     // 导出为普通文本（表格）
-                    let mut table = prettytable::Table::new();
+                    let mut table = Table::new();
                     
                     // 添加表头
-                    table.set_titles(prettytable::row::Row::new(
-                        result.columns.iter().map(|c| prettytable::cell::Cell::new(c)).collect()
+                    table.set_titles(Row::new(
+                        result.columns.iter().map(|c| Cell::new(c)).collect()
                     ));
                     
                     // 添加数据行
                     for row in &result.rows {
-                        table.add_row(prettytable::row::Row::new(
-                            row.iter().map(|c| prettytable::cell::Cell::new(c)).collect()
+                        table.add_row(Row::new(
+                            row.iter().map(|c| Cell::new(c)).collect()
                         ));
                     }
                     
@@ -500,7 +501,7 @@ impl Repl {
         }
         
         // 创建编辑器
-        let mut editor = create_editor(self.config.enable_completion)?;
+        let mut editor = create_editor()?;
         
         // 加载历史记录
         let history_file = self.history_file.to_string_lossy().to_string();

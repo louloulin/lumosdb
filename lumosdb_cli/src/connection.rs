@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
 use std::collections::HashMap;
-use reqwest::{Client, StatusCode};
+use reqwest::{blocking::Client, StatusCode};
 
 /// 数据库类型
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -228,7 +228,7 @@ impl Connection {
         
         // 构建API请求
         let url = format!("{}api/db/query", base_url);
-        let mut request = client.post(&url)
+        let mut request_builder = client.post(&url)
             .json(&serde_json::json!({
                 "sql": query,
                 "params": []
@@ -236,11 +236,11 @@ impl Connection {
             
         // 如果有API密钥，添加到请求头
         if let Some(api_key) = &self.info.api_key {
-            request = request.header("X-API-Key", api_key);
+            request_builder = request_builder.header("X-API-Key", api_key);
         }
         
         // 发送请求并获取响应
-        let response = request.send()?;
+        let response = request_builder.send()?;
         
         // 计算执行时间
         let execution_time = start.elapsed();
@@ -248,60 +248,77 @@ impl Connection {
         match response.status() {
             StatusCode::OK => {
                 // 解析查询结果
-                let api_response = response.json::<serde_json::Value>()?;
+                let json: serde_json::Value = response.json()?;
                 
-                if let Some(error) = api_response.get("error").and_then(|e| e.as_str()) {
-                    return Err(anyhow!("服务器返回错误: {}", error));
+                if let Some(success) = json.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        // 成功响应
+                        if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
+                            // 提取列名
+                            let mut columns = Vec::new();
+                            if let Some(first_row) = data.first() {
+                                if let Some(obj) = first_row.as_object() {
+                                    columns = obj.keys().cloned().collect();
+                                }
+                            }
+                            
+                            // 提取数据行
+                            let mut rows = Vec::new();
+                            for row_obj in data {
+                                if let Some(row_map) = row_obj.as_object() {
+                                    let mut row = Vec::new();
+                                    for column in &columns {
+                                        let value = if let Some(val) = row_map.get(column) {
+                                            if val.is_null() {
+                                                "NULL".to_string()
+                                            } else if val.is_string() {
+                                                val.as_str().unwrap_or("").to_string()
+                                            } else {
+                                                val.to_string()
+                                            }
+                                        } else {
+                                            "NULL".to_string()
+                                        };
+                                        
+                                        row.push(value);
+                                    }
+                                    rows.push(row);
+                                }
+                            }
+                            
+                            return Ok(QueryResult {
+                                columns,
+                                rows: rows.clone(),
+                                execution_time,
+                                affected_rows: rows.len(),
+                            });
+                        }
+                        
+                        // 数据为空，可能是非查询操作
+                        return Ok(QueryResult {
+                            columns: Vec::new(),
+                            rows: Vec::new(),
+                            execution_time,
+                            affected_rows: json.get("affected_rows")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or(0) as usize,
+                        });
+                    } else {
+                        // 错误响应
+                        let error_msg = json.get("error")
+                            .and_then(|e| e.get("message"))
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("Unknown error");
+                            
+                        return Err(anyhow!("Query failed: {}", error_msg));
+                    }
                 }
                 
-                // 解析列名
-                let columns = if let Some(cols) = api_response.get("columns").and_then(|c| c.as_array()) {
-                    cols.iter()
-                        .filter_map(|c| c.as_str().map(String::from))
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-                
-                // 解析数据行
-                let rows = if let Some(rows_data) = api_response.get("rows").and_then(|r| r.as_array()) {
-                    rows_data.iter()
-                        .map(|row| {
-                            if let Some(row_obj) = row.as_object() {
-                                columns.iter()
-                                    .map(|col| {
-                                        row_obj.get(col)
-                                            .map(|v| v.to_string().trim_matches('"').to_string())
-                                            .unwrap_or_else(|| "NULL".to_string())
-                                    })
-                                    .collect()
-                            } else if let Some(row_arr) = row.as_array() {
-                                row_arr.iter()
-                                    .map(|v| v.to_string().trim_matches('"').to_string())
-                                    .collect()
-                            } else {
-                                Vec::new()
-                            }
-                        })
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-                
-                // 获取影响的行数
-                let affected_rows = api_response.get("affected_rows")
-                    .and_then(|r| r.as_u64())
-                    .unwrap_or(0) as usize;
-                
-                Ok(QueryResult {
-                    columns,
-                    rows,
-                    execution_time,
-                    affected_rows,
-                })
+                Err(anyhow!("Invalid response format"))
             },
             status => {
-                Err(anyhow!("服务器返回错误状态码: {}", status))
+                // 处理HTTP错误
+                Err(anyhow!("HTTP error: {}", status))
             }
         }
     }
@@ -359,7 +376,7 @@ impl Connection {
         }
     }
     
-    /// 从服务器获取元数据
+    /// 获取服务器元数据
     fn get_server_metadata(&self) -> Result<DatabaseMetadata> {
         let client = self.client.as_ref()
             .ok_or_else(|| anyhow!("未初始化HTTP客户端"))?;
@@ -367,49 +384,61 @@ impl Connection {
             .ok_or_else(|| anyhow!("未初始化服务器URL"))?;
         
         // 构建API请求
-        let url = format!("{}api/db/tables", base_url);
-        let mut request = client.get(&url);
-            
+        let url = format!("{}api/db/metadata", base_url);
+        let mut request_builder = client.get(&url);
+        
         // 如果有API密钥，添加到请求头
         if let Some(api_key) = &self.info.api_key {
-            request = request.header("X-API-Key", api_key);
+            request_builder = request_builder.header("X-API-Key", api_key);
         }
         
         // 发送请求并获取响应
-        let response = request.send()?;
+        let response = request_builder.send()?;
         
         match response.status() {
             StatusCode::OK => {
                 // 解析元数据
-                let api_response = response.json::<serde_json::Value>()?;
+                let json: serde_json::Value = response.json()?;
                 
-                if let Some(error) = api_response.get("error").and_then(|e| e.as_str()) {
-                    return Err(anyhow!("服务器返回错误: {}", error));
+                if let Some(success) = json.get("success").and_then(|v| v.as_bool()) {
+                    if success {
+                        // 提取版本信息
+                        let version = json.get("version")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+                            
+                        // 提取表列表
+                        let tables = if let Some(tables_array) = json.get("tables").and_then(|v| v.as_array()) {
+                            tables_array.iter()
+                                .filter_map(|v| v.as_str())
+                                .map(|s| s.to_string())
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
+                        
+                        return Ok(DatabaseMetadata {
+                            db_type: self.info.db_type.clone(),
+                            version,
+                            tables,
+                        });
+                    } else {
+                        // 错误响应
+                        let error_msg = json.get("error")
+                            .and_then(|e| e.get("message"))
+                            .and_then(|m| m.as_str())
+                            .unwrap_or("Unknown error");
+                            
+                        return Err(anyhow!("Failed to get metadata: {}", error_msg));
+                    }
                 }
                 
-                // 获取表名列表
-                let tables = if let Some(tables_data) = api_response.get("tables").and_then(|t| t.as_array()) {
-                    tables_data.iter()
-                        .filter_map(|t| t.as_str().map(String::from))
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-                
-                // 获取版本信息
-                let version = api_response.get("version")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("unknown")
-                    .to_string();
-                
-                Ok(DatabaseMetadata {
-                    db_type: DatabaseType::LumosServer,
-                    version,
-                    tables,
-                })
+                Err(anyhow!("Invalid response format"))
             },
             status => {
-                Err(anyhow!("服务器返回错误状态码: {}", status))
+                // 处理HTTP错误
+                Err(anyhow!("HTTP error: {}", status))
             }
         }
     }
