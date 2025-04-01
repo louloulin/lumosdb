@@ -20,7 +20,16 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
-  Download
+  Download,
+  FileText,
+  Server,
+  UserCircle,
+  MessageSquare,
+  Search,
+  BarChart3,
+  FileDown,
+  HardDrive,
+  Book
 } from "lucide-react"
 import { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -132,6 +141,28 @@ export function SideNav({ className, ...props }: SideNavProps) {
           href: "/dashboard/install",
           icon: Download,
           matches: (path: string) => path.startsWith("/dashboard/install")
+        }
+      ]
+    },
+    {
+      title: "Backup & Recovery",
+      items: [
+        {
+          name: "Backup",
+          href: "/dashboard/backup",
+          icon: HardDrive,
+          matches: (path: string) => path.startsWith("/dashboard/backup")
+        }
+      ]
+    },
+    {
+      title: "Documentation",
+      items: [
+        {
+          name: "Documentation",
+          href: "/dashboard/docs",
+          icon: Book,
+          matches: (path: string) => path.startsWith("/dashboard/docs")
         }
       ]
     }
