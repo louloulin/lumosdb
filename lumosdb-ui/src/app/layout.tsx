@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter as FontSans } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -8,9 +8,11 @@ import { Toaster } from "@/components/ui/toaster";
 // 导入国际化提供者
 import { I18nProvider } from "@/i18n/provider";
 
-const fontSans = FontSans({
+const fontSans = Inter({
   subsets: ["latin"],
+  display: "swap",
   variable: "--font-sans",
+  preload: true,
 });
 
 export const metadata: Metadata = {

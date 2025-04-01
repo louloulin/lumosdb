@@ -23,4 +23,8 @@ module.exports = withPWA({
     // !! WARN !!
     ignoreBuildErrors: true,
   },
+  experimental: {
+    // Disable turbopack since it's causing issues with font loading
+    turbo: false,
+  },
 });
