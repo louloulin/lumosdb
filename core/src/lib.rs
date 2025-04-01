@@ -1,4 +1,5 @@
 pub mod sqlite;
+#[cfg(feature = "duckdb")]
 pub mod duckdb;
 pub mod query;
 pub mod sync;
@@ -15,6 +16,7 @@ pub enum LumosError {
     /// SQLite related errors
     Sqlite(String),
     /// DuckDB related errors
+    #[cfg(feature = "duckdb")]
     DuckDb(String),
     /// Query processing errors
     Query(String),
@@ -38,6 +40,7 @@ impl fmt::Display for LumosError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LumosError::Sqlite(msg) => write!(f, "SQLite error: {}", msg),
+            #[cfg(feature = "duckdb")]
             LumosError::DuckDb(msg) => write!(f, "DuckDB error: {}", msg),
             LumosError::Query(msg) => write!(f, "Query error: {}", msg),
             LumosError::Sync(msg) => write!(f, "Sync error: {}", msg),
@@ -65,6 +68,7 @@ impl From<rusqlite::Error> for LumosError {
     }
 }
 
+#[cfg(feature = "duckdb")]
 impl From<duckdb::Error> for LumosError {
     fn from(err: duckdb::Error) -> Self {
         LumosError::DuckDb(err.to_string())
@@ -80,6 +84,7 @@ pub struct LumosConfig {
     /// Path to SQLite database file
     pub sqlite_path: String,
     /// Path to DuckDB database file
+    #[cfg(feature = "duckdb")]
     pub duckdb_path: String,
     /// Sync interval in seconds
     pub sync_interval: u64,
@@ -91,6 +96,7 @@ impl Default for LumosConfig {
     fn default() -> Self {
         Self {
             sqlite_path: "lumos.db".to_string(),
+            #[cfg(feature = "duckdb")]
             duckdb_path: "lumos.duckdb".to_string(),
             sync_interval: 60,
             max_memory_mb: 1024,

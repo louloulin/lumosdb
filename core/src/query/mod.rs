@@ -651,8 +651,13 @@ impl QueryExecutor {
                         }
                     }
                     
-                    // 使用DuckDB参数格式执行插入
-                    conn.execute(&insert_sql, &params)?;
+                    // Convert string values to SQL parameters
+                    let sql_params: Vec<&dyn rusqlite::ToSql> = params.iter()
+                        .map(|s| s as &dyn rusqlite::ToSql)
+                        .collect();
+                    
+                    // 执行插入操作
+                    conn.execute(&insert_sql, &sql_params)?;
                 }
             }
             
@@ -767,8 +772,13 @@ impl QueryExecutor {
                         params.push(format!("{}", row[i]));
                     }
                     
+                    // Convert string values to SQL parameters
+                    let sql_params: Vec<&dyn rusqlite::ToSql> = params.iter()
+                        .map(|s| s as &dyn rusqlite::ToSql)
+                        .collect();
+                    
                     // 执行插入操作
-                    conn.execute(&insert_sql, rusqlite::params_from_iter(params.iter()))?;
+                    conn.execute(&insert_sql, &sql_params)?;
                 }
             }
             
