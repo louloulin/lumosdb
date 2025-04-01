@@ -146,59 +146,57 @@ export default function SQLEditorPage() {
                   <TabsTrigger value="results">Results</TabsTrigger>
                   <TabsTrigger value="messages">Messages</TabsTrigger>
                 </TabsList>
-              </Tabs>
-            </CardHeader>
-            <CardContent>
-              <TabsContent value="results" className="m-0">
-                {results ? (
-                  <div className="rounded-md border overflow-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          {getHeaders().map((header, index) => (
-                            <TableHead key={index}>{header}</TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {results.map((row, rowIndex) => (
-                          <TableRow key={rowIndex}>
-                            {getHeaders().map((header, colIndex) => (
-                              <TableCell key={colIndex}>{String(row[header])}</TableCell>
+                <TabsContent value="results" className="mt-2">
+                  {results ? (
+                    <div className="rounded-md border overflow-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            {getHeaders().map((header, index) => (
+                              <TableHead key={index}>{header}</TableHead>
                             ))}
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                ) : (
-                  <div className="h-[200px] flex items-center justify-center">
-                    <p className="text-muted-foreground">Execute a query to see results</p>
-                  </div>
-                )}
-              </TabsContent>
-              <TabsContent value="messages" className="m-0">
-                <div className="rounded-md border p-4">
-                  {error ? (
-                    <div className="text-sm">
-                      <p className="text-red-500">{error}</p>
-                    </div>
-                  ) : results ? (
-                    <div className="text-sm">
-                      <p className="text-green-500">Query executed successfully</p>
-                      <p className="text-muted-foreground mt-1">Returned {results.length} rows</p>
-                      {executionDuration && (
-                        <p className="text-muted-foreground mt-1">
-                          Execution time: {executionDuration.toFixed(3)}s
-                        </p>
-                      )}
+                        </TableHeader>
+                        <TableBody>
+                          {results.map((row, rowIndex) => (
+                            <TableRow key={rowIndex}>
+                              {getHeaders().map((header, colIndex) => (
+                                <TableCell key={colIndex}>{String(row[header])}</TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
                     </div>
                   ) : (
-                    <p className="text-muted-foreground">No messages yet</p>
+                    <div className="h-[200px] flex items-center justify-center">
+                      <p className="text-muted-foreground">Execute a query to see results</p>
+                    </div>
                   )}
-                </div>
-              </TabsContent>
-            </CardContent>
+                </TabsContent>
+                <TabsContent value="messages" className="mt-2">
+                  <div className="rounded-md border p-4">
+                    {error ? (
+                      <div className="text-sm">
+                        <p className="text-red-500">{error}</p>
+                      </div>
+                    ) : results ? (
+                      <div className="text-sm">
+                        <p className="text-green-500">Query executed successfully</p>
+                        <p className="text-muted-foreground mt-1">Returned {results.length} rows</p>
+                        {executionDuration && (
+                          <p className="text-muted-foreground mt-1">
+                            Execution time: {executionDuration.toFixed(3)}s
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground">No messages yet</p>
+                    )}
+                  </div>
+                </TabsContent>
+              </Tabs>
+            </CardHeader>
           </Card>
         </div>
       </div>
