@@ -1,4 +1,18 @@
 {
+  "name": "lumos-project",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "cd lumosdb-ui && bun run dev",
+    "dev:api": "cd lumosdb-api && bun run dev",
+    "dev:all": "bun run dev:api & bun run dev",
+    "build": "cd lumosdb-ui && bun run build",
+    "build:api": "cd lumosdb-api && bun run build",
+    "build:all": "bun run build:api && bun run build",
+    "start": "cd lumosdb-ui && bun run start",
+    "start:api": "cd lumosdb-api && bun run start",
+    "start:all": "bun run start:api & bun run start"
+  },
   "dependencies": {
     "recharts": "^2.15.1"
   }
