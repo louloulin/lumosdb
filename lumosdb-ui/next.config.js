@@ -13,6 +13,8 @@ module.exports = withPWA({
     // Warning: This allows production builds to successfully complete even if
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
+    // Disable strict mode for rules to allow more flexible code patterns
+    dirs: ['pages', 'components', 'lib', 'utils', 'hooks', 'app', 'config'],
   },
   typescript: {
     // !! WARN !!
