@@ -7,7 +7,9 @@ import {
   Activity, 
   Settings, 
   UserCircle,
-  Download 
+  Download,
+  MonitorIcon,
+  Sparkles
 } from "lucide-react"
 
 export const sidebarNavItems = [
@@ -40,6 +42,16 @@ export const sidebarNavItems = [
     title: "实时数据",
     href: "/dashboard/realtime",
     icon: <Activity className="w-5 h-5" />,
+  },
+  {
+    title: "系统监控",
+    href: "/dashboard/monitoring",
+    icon: <MonitorIcon className="w-5 h-5" />,
+  },
+  {
+    title: "AI 助手",
+    href: "/dashboard/ai-assistant",
+    icon: <Sparkles className="w-5 h-5" />,
   },
   {
     title: "安装应用",
