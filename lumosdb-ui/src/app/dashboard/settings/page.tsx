@@ -153,7 +153,7 @@ export default function SettingsPage() {
   }
 
   // 更新设置处理函数
-  const handleUpdateSettings = (category, values) => {
+  const handleUpdateSettings = (category: string, values: Record<string, any>) => {
     setSettings(prev => ({
       ...prev,
       [category]: {
