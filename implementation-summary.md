@@ -8,7 +8,7 @@
 - ✅ Responsive Container (`src/components/ui/responsive-container.tsx`)
 
 ### PWA Support
-- ✅ SVG Icons for different sizes (72x72, 96x96, 128x128, 144x144, etc.)
+- ✅ PNG Icons for different sizes (72x72, 96x96, 128x128, 144x144, etc.)
 - ✅ Shortcut icons for SQL Editor and Vectors features
 - ✅ Desktop and mobile screenshots for installation
 - ✅ Updated manifest.json with correct icon references
@@ -32,6 +32,11 @@
   - SQL query generator
   - Data analysis assistant
   - Database schema design helper
+- ✅ Data Import/Export
+  - Support for multiple file formats (CSV, JSON, SQL, XLSX, Parquet)
+  - Import/export progress tracking
+  - Batch data processing
+  - Vector data import/export support
 
 ### Mobile Optimization
 - ✅ Responsive layout components

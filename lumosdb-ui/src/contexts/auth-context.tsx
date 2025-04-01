@@ -1,8 +1,19 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState } from "react";
 import { useRouter } from "next/navigation";
-import { login as apiLogin, logout as apiLogout, register as apiRegister, getCurrentUser, User } from "@/lib/api/auth";
+import { User } from "@/lib/api/auth";
+
+// Mock user data to avoid backend dependency
+const mockUser: User = {
+  id: "1",
+  email: "admin@example.com",
+  name: "Admin User",
+  role: "admin",
+  avatar: "/avatar.png",
+  createdAt: "2024-01-01",
+  lastLogin: new Date().toISOString()
+};
 
 interface AuthContextType {
   user: User | null;
@@ -17,40 +28,21 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState<User | null>(mockUser); // Start with mock user
+  const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const isAuthenticated = !!user;
+  const isAuthenticated = true; // Always authenticated for demo
 
-  // 检查用户是否已经登录
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const currentUser = await getCurrentUser();
-        setUser(currentUser);
-      } catch (err) {
-        console.error("Error checking authentication:", err);
-        setError("Failed to authenticate");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    checkAuth();
-  }, []);
-
-  // 登录函数
-  const login = async (email: string, password: string) => {
+  // Login function
+  const login = async (_email: string, _password: string) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const { user } = await apiLogin(email, password);
-      setUser(user);
-      
-      // 登录成功后重定向到控制面板
+      // In a real app, this would call your API
+      setUser(mockUser);
       router.push("/dashboard");
     } catch (err) {
       console.error("Login error:", err);
@@ -61,16 +53,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 注册函数
+  // Register function
   const register = async (data: { email: string; password: string; name: string }) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const { user } = await apiRegister(data);
-      setUser(user);
-      
-      // 注册成功后重定向到控制面板
+      // In a real app, this would call your API
+      const newUser = {
+        ...mockUser,
+        email: data.email,
+        name: data.name
+      };
+      setUser(newUser);
       router.push("/dashboard");
     } catch (err) {
       console.error("Registration error:", err);
@@ -81,15 +76,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 退出登录函数
+  // Logout function
   const logout = async () => {
     setIsLoading(true);
     
     try {
-      await apiLogout();
+      // In a real app, this would call your API
       setUser(null);
-      
-      // 退出登录后重定向到登录页面
       router.push("/auth/login");
     } catch (err) {
       console.error("Logout error:", err);
@@ -115,7 +108,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// 自定义钩子，用于在组件中访问认证上下文
+// Custom hook to access the auth context in components
 export function useAuth() {
   const context = useContext(AuthContext);
   

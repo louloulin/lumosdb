@@ -9,7 +9,8 @@ import {
   UserCircle,
   Download,
   MonitorIcon,
-  Sparkles
+  Sparkles,
+  FileUp
 } from "lucide-react"
 
 export const sidebarNavItems = [
@@ -47,6 +48,11 @@ export const sidebarNavItems = [
     title: "系统监控",
     href: "/dashboard/monitoring",
     icon: <MonitorIcon className="w-5 h-5" />,
+  },
+  {
+    title: "数据传输",
+    href: "/dashboard/data-transfer",
+    icon: <FileUp className="w-5 h-5" />,
   },
   {
     title: "AI 助手",
