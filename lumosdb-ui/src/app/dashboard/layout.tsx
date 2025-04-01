@@ -20,6 +20,7 @@ import {
   ActivitySquare,
   RefreshCw,
   Palette,
+  Globe,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -76,6 +77,11 @@ export default function DashboardLayout({
       name: "Theme Settings",
       href: "/dashboard/theme",
       icon: Palette,
+    },
+    {
+      name: "Language Settings",
+      href: "/dashboard/language",
+      icon: Globe,
     },
     {
       name: "Settings",
