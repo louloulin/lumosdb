@@ -19,7 +19,8 @@ import {
   Code,
   ChevronRight,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Download
 } from "lucide-react"
 import { LucideIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -125,6 +126,12 @@ export function SideNav({ className, ...props }: SideNavProps) {
           href: "/dashboard/profile",
           icon: User,
           matches: (path: string) => path.startsWith("/dashboard/profile")
+        },
+        {
+          name: "安装应用",
+          href: "/dashboard/install",
+          icon: Download,
+          matches: (path: string) => path.startsWith("/dashboard/install")
         }
       ]
     }

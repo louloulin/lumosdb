@@ -36,46 +36,6 @@
 - 查询历史记录和收藏功能 ✓
 - 查询结果可视化展示与导出 ✓
 
-```jsx
-// 示例: SQL编辑器组件
-function SQLEditor() {
-  return (
-    <div className="flex flex-col h-full">
-      <div className="flex-1">
-        <MonacoEditor
-          language="sql"
-          theme="vs-dark"
-          options={{
-            minimap: { enabled: false },
-            automaticLayout: true,
-          }}
-        />
-      </div>
-      <div className="h-8 flex justify-between">
-        <Button>运行</Button>
-        <Button variant="outline">保存</Button>
-      </div>
-      <div className="flex-1 border-t">
-        {/* 查询结果表格 */}
-      </div>
-    </div>
-  );
-}
-```
-
-#### 2.1.2 表结构管理 ✓
-
-- 表创建/编辑界面 ✓
-- 字段类型定义和约束设置 ✓ 
-- 索引管理
-- 外键关系可视化
-
-#### 2.1.3 DuckDB 分析页面 ✓
-
-- 完成 DuckDB 分析界面 ✓
-- 支持复杂分析查询构建 ✓
-- 结果可视化与图表展示 ✓
-
 ### 2.2 第二阶段：高级功能开发（4-6周）
 
 #### 2.2.1 向量搜索与管理界面 ✓
@@ -84,47 +44,6 @@ function SQLEditor() {
 - 向量搜索测试界面 ✓
 - 相似度搜索可视化 ✓
 - 向量数据导入导出 ✓
-
-```jsx
-// 示例: 向量搜索组件
-function VectorSearch() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>向量搜索</CardTitle>
-        <CardDescription>在集合中查找语义相似的内容</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form>
-          <div className="space-y-4">
-            <div className="grid gap-2">
-              <Label htmlFor="collection">选择集合</Label>
-              <Select>
-                <SelectTrigger>
-                  <SelectValue placeholder="选择向量集合" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="product_embeddings">产品嵌入</SelectItem>
-                  <SelectItem value="customer_profiles">客户画像</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="query">搜索查询</Label>
-              <Textarea placeholder="输入搜索内容..." />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="limit">结果数量</Label>
-              <Input type="number" defaultValue={5} min={1} max={100} />
-            </div>
-            <Button type="submit">搜索</Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
-```
 
 #### 2.2.2 认证与权限系统 ✓
 
@@ -158,6 +77,14 @@ function VectorSearch() {
 - 改进移动端响应式布局 ✓
 - 触控友好的交互设计 ✓
 - 优化移动端性能 ✓
+
+#### 2.3.4 SQL 编辑器 ✅
+- [x] 基于 Monaco Editor 集成的 SQL 编辑器
+- [x] 语法高亮、自动补全和错误提示
+- [x] 执行 SQL 查询并显示结果
+- [x] 保存和加载查询的功能
+- [x] 查询历史记录
+- [x] 支持导出查询结果
 
 ## 3. API 接口需求
 
