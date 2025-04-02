@@ -1,28 +1,29 @@
 "use client"
 
 import Link from "next/link"
-import { ResponsiveContainer } from "@/components/ui/responsive-container"
+import { DocWrapper } from "@/components/doc-wrapper"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
-  Grid3X3, 
+  Database, 
   ChevronLeft, 
-  Code, 
-  Search,
-  Brain,
-  BarChart,
-  Lightbulb,
-  Boxes,
-  Info
+  Search, 
+  Code,
+  Layers,
+  Grid3X3,
+  ArrowUpDown,
+  AlertTriangle,
+  FileCode,
+  BarChart4
 } from "lucide-react"
 
 export default function VectorSearchPage() {
   return (
-    <ResponsiveContainer className="max-w-4xl mx-auto p-6">
+    <DocWrapper>
       <div className="flex items-center mb-6">
         <Link href="/dashboard/docs">
           <Button variant="ghost" size="sm" className="gap-1">
@@ -32,8 +33,8 @@ export default function VectorSearchPage() {
         </Link>
         <div className="ml-auto flex gap-2">
           <Badge variant="outline">Vector</Badge>
-          <Badge variant="outline">Semantic Search</Badge>
-          <Badge variant="outline">Embeddings</Badge>
+          <Badge variant="outline">Embedding</Badge>
+          <Badge variant="outline">Similarity</Badge>
         </div>
       </div>
 
@@ -46,72 +47,111 @@ export default function VectorSearchPage() {
             <h1 className="text-3xl font-bold">Vector Search Implementation</h1>
           </div>
           <p className="text-lg text-muted-foreground mb-6">
-            How to set up and use vector databases for semantic search in LumosDB
+            Learn how to use vector databases for semantic search and similarity matching in LumosDB
           </p>
           <Separator className="my-6" />
         </div>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-bold">Introduction to Vector Search</h2>
+          <h2 className="text-2xl font-bold">Introduction to Vector Databases</h2>
           <p>
-            Vector search is a technique for finding similar items in large datasets based on their 
-            semantic meaning rather than exact keyword matches. It involves converting text, images, 
-            or other data into numerical vectors (embeddings) and then finding vectors that are 
-            close to each other in a high-dimensional space.
+            Vector databases store data as high-dimensional vectors (embeddings) and allow for 
+            similarity-based searches. Unlike traditional databases that match exact values, vector 
+            databases find the most similar items based on the distance between vectors in the embedding space.
           </p>
           <p>
-            LumosDB provides built-in support for vector databases, allowing you to:
+            Key use cases for vector databases include:
           </p>
           <ul className="list-disc list-inside space-y-2 ml-4">
-            <li>Create and manage vector collections</li>
-            <li>Import and generate embeddings from various data sources</li>
-            <li>Perform similarity searches</li>
-            <li>Enhance search results with metadata filtering</li>
-            <li>Build powerful AI applications with semantic search capabilities</li>
+            <li>Semantic search (finding content with similar meaning)</li>
+            <li>Recommendation systems</li>
+            <li>Image and audio similarity</li>
+            <li>Natural language processing applications</li>
+            <li>Anomaly detection</li>
           </ul>
+          <p className="mt-4">
+            LumosDB integrates vector database capabilities with traditional SQL databases, 
+            providing a unified interface for all your data needs.
+          </p>
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-bold">Getting Started with Vector Search</h2>
+          <h2 className="text-2xl font-bold">Creating Vector Collections</h2>
           
-          <h3 className="text-xl font-semibold mt-6">Creating a Vector Collection</h3>
           <p>
-            To create a new vector collection in LumosDB:
+            In LumosDB, vector data is organized into collections. To create a new vector collection:
           </p>
           <ol className="list-decimal list-inside space-y-3 ml-4">
             <li>
-              <span className="font-medium">Navigate to the Vector section</span>
+              <span className="font-medium">Navigate to the Vector DB section</span>
               <p className="text-muted-foreground ml-6 mt-1">
-                Click on &quot;Vector Data&quot; in the main navigation sidebar.
+                Click on "Vector DB" in the main navigation sidebar.
               </p>
             </li>
             <li>
               <span className="font-medium">Create a new collection</span>
               <p className="text-muted-foreground ml-6 mt-1">
-                Click the &quot;New Collection&quot; button and provide a name.
+                Click the "New Collection" button and provide a name.
               </p>
             </li>
             <li>
-              <span className="font-medium">Configure collection settings</span>
+              <span className="font-medium">Configure vector parameters</span>
               <p className="text-muted-foreground ml-6 mt-1">
-                Set the vector dimension (e.g., 768, 1024, 1536), distance metric (e.g., cosine, 
-                euclidean), and other parameters.
+                Set the vector dimension, similarity metric, and indexing options.
               </p>
             </li>
           </ol>
           
-          <Alert className="mt-6">
-            <Info className="h-4 w-4" />
-            <AlertTitle>Vector Dimensions</AlertTitle>
-            <AlertDescription>
-              The dimension of your vectors depends on the embedding model you use. Common dimensions are:
-              <ul className="list-disc list-inside mt-2">
-                <li>OpenAI text-embedding-3-small: 1536 dimensions</li>
-                <li>OpenAI text-embedding-ada-002: 1536 dimensions</li>
-                <li>BERT base: 768 dimensions</li>
-                <li>SBERT: 384 or 768 dimensions</li>
+          <Card className="mt-6">
+            <CardContent className="pt-6">
+              <h3 className="text-lg font-semibold mb-3">Key Configuration Options</h3>
+              <ul className="space-y-3">
+                <li className="flex items-start gap-2">
+                  <div className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
+                    <Layers className="h-3 w-3" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Vector Dimension</span>
+                    <p className="text-sm text-muted-foreground">
+                      The size of your embedding vectors (e.g., 768 for BERT, 1536 for OpenAI embeddings).
+                      This must match the dimension of the vectors you plan to store.
+                    </p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
+                    <ArrowUpDown className="h-3 w-3" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Distance Metric</span>
+                    <p className="text-sm text-muted-foreground">
+                      Choose between Cosine, Euclidean, or Dot Product based on your use case.
+                      Cosine is often best for text embeddings, while Euclidean works well for image embeddings.
+                    </p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
+                    <Search className="h-3 w-3" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Index Type</span>
+                    <p className="text-sm text-muted-foreground">
+                      Select HNSW (Hierarchical Navigable Small World) for faster queries 
+                      or Flat for exact but slower searches.
+                    </p>
+                  </div>
+                </li>
               </ul>
-              Ensure your collection dimension matches your embedding model.
+            </CardContent>
+          </Card>
+          
+          <Alert className="mt-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Important</AlertTitle>
+            <AlertDescription>
+              Once you create a collection with a specific dimension, you cannot change it later.
+              Make sure to select the correct dimension for your embedding model.
             </AlertDescription>
           </Alert>
         </section>
@@ -119,344 +159,331 @@ export default function VectorSearchPage() {
         <section className="space-y-4">
           <h2 className="text-2xl font-bold">Adding Vector Data</h2>
           
-          <h3 className="text-xl font-semibold mt-6">Option 1: Upload Pre-computed Embeddings</h3>
           <p>
-            If you already have vector embeddings, you can import them directly:
+            After creating a collection, you can add vector data in several ways:
           </p>
-          <ol className="list-decimal list-inside space-y-2 ml-4">
-            <li>Click &quot;Import Vectors&quot; on your collection page</li>
-            <li>Select the file format (JSON, CSV, or Parquet)</li>
-            <li>Upload your file containing vector data and metadata</li>
-            <li>Map the columns to vector fields and metadata fields</li>
-            <li>Start the import process</li>
-          </ol>
           
-          <div className="bg-muted p-4 rounded-md mt-4 overflow-x-auto">
-            <pre className="text-sm">
-              <code>
-                {`// Example JSON format for vector import
-[
-  {
-    "id": "doc1",
-    "vector": [0.1, 0.2, 0.3, ...],  // Vector values
-    "metadata": {
-      "text": "Sample document text",
-      "category": "example",
-      "date": "2023-12-05"
-    }
+          <Tabs defaultValue="ui" className="mt-6">
+            <TabsList className="grid grid-cols-3 mb-4">
+              <TabsTrigger value="ui">User Interface</TabsTrigger>
+              <TabsTrigger value="api">API</TabsTrigger>
+              <TabsTrigger value="import">Bulk Import</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="ui" className="space-y-4">
+              <p>
+                To add vectors through the UI:
+              </p>
+              <ol className="list-decimal list-inside space-y-2 ml-4">
+                <li>Open your collection from the Vector DB section</li>
+                <li>Click "Add Vector" button</li>
+                <li>Enter or paste your vector data (as JSON array or comma-separated values)</li>
+                <li>Add metadata if needed (as JSON object)</li>
+                <li>Click "Save"</li>
+              </ol>
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  Ensure your vector dimension matches the collection's configuration.
+                </AlertDescription>
+              </Alert>
+            </TabsContent>
+            
+            <TabsContent value="api" className="space-y-4">
+              <p>
+                Add vectors programmatically using the LumosDB API:
+              </p>
+              <div className="bg-muted p-4 rounded-md overflow-x-auto">
+                <pre className="text-sm">
+                  <code>
+                    {`// JavaScript example
+const response = await fetch('/api/vector/collections/my_collection/vectors', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
   },
-  ...
+  body: JSON.stringify({
+    vector: [0.1, 0.2, 0.3], // Your vector values
+    metadata: {
+      title: 'Example document',
+      category: 'documentation'
+    }
+  })
+});`}
+                  </code>
+                </pre>
+              </div>
+              <p className="mt-2">
+                Each vector requires:
+              </p>
+              <ul className="list-disc list-inside space-y-1 ml-4">
+                <li>
+                  <span className="font-medium">vector</span>: Array of floating-point numbers matching your collection's dimension
+                </li>
+                <li>
+                  <span className="font-medium">metadata</span> (optional): JSON object with additional information to store with the vector
+                </li>
+              </ul>
+            </TabsContent>
+            
+            <TabsContent value="import" className="space-y-4">
+              <p>
+                For large datasets, use the bulk import feature:
+              </p>
+              <ol className="list-decimal list-inside space-y-2 ml-4">
+                <li>Prepare a JSONL file with one vector per line</li>
+                <li>Go to your collection and click "Import"</li>
+                <li>Upload your file or provide a URL</li>
+                <li>Configure import settings</li>
+                <li>Start the import process</li>
+              </ol>
+              <p className="mt-2">Example JSONL format:</p>
+              <div className="bg-muted p-4 rounded-md overflow-x-auto">
+                <pre className="text-sm">
+                  <code>
+                    {`[
+  {
+    "vector": [0.1, 0.2, 0.3], 
+    "metadata": {"title": "Document 1"}
+  },
+  {
+    "vector": [0.2, 0.3, 0.4], 
+    "metadata": {"title": "Document 2"}
+  },
+  {
+    "vector": [0.3, 0.4, 0.5], 
+    "metadata": {"title": "Document 3"}
+  }
 ]`}
-              </code>
-            </pre>
-          </div>
+                  </code>
+                </pre>
+              </div>
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle>Bulk Import Tips</AlertTitle>
+                <AlertDescription>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>Monitor import progress in the "Tasks" section</li>
+                    <li>For very large imports, consider using the chunked API</li>
+                    <li>All vectors must have the same dimension as the collection</li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            </TabsContent>
+          </Tabs>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-2xl font-bold">Searching Vector Collections</h2>
           
-          <h3 className="text-xl font-semibold mt-6">Option 2: Generate Embeddings in LumosDB</h3>
           <p>
-            LumosDB can generate embeddings from your raw text data:
+            Once you have added vectors to your collection, you can perform similarity searches:
           </p>
-          <ol className="list-decimal list-inside space-y-2 ml-4">
-            <li>Click &quot;Generate Embeddings&quot; on your collection page</li>
-            <li>Select your data source (text file, database, or paste text)</li>
-            <li>Choose an embedding model (e.g., OpenAI, BERT, etc.)</li>
-            <li>Configure chunking and preprocessing options</li>
-            <li>Start the embedding generation process</li>
+          
+          <ol className="list-decimal list-inside space-y-3 ml-4">
+            <li>
+              <span className="font-medium">Navigate to your collection</span>
+              <p className="text-muted-foreground ml-6 mt-1">
+                Open the Vector DB section and select your collection.
+              </p>
+            </li>
+            <li>
+              <span className="font-medium">Go to the Search tab</span>
+              <p className="text-muted-foreground ml-6 mt-1">
+                You'll see options for both vector search and metadata filtering.
+              </p>
+            </li>
+            <li>
+              <span className="font-medium">Enter your query vector</span>
+              <p className="text-muted-foreground ml-6 mt-1">
+                Either paste a vector directly or use the text-to-vector feature to generate embeddings from text.
+              </p>
+            </li>
+            <li>
+              <span className="font-medium">Set search parameters</span>
+              <p className="text-muted-foreground ml-6 mt-1">
+                Configure the number of results (k), distance threshold, and any metadata filters.
+              </p>
+            </li>
+            <li>
+              <span className="font-medium">Run the search</span>
+              <p className="text-muted-foreground ml-6 mt-1">
+                View results sorted by similarity score, with distance metrics and metadata displayed.
+              </p>
+            </li>
           </ol>
           
           <Card className="mt-6">
             <CardContent className="pt-6">
-              <div className="flex items-start gap-3">
-                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                  <Brain className="h-4 w-4" />
-                </div>
-                <div>
-                  <h4 className="font-semibold">Selecting an Embedding Model</h4>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    LumosDB supports multiple embedding models:
-                  </p>
-                  <Table className="mt-2">
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Model</TableHead>
-                        <TableHead>Dimensions</TableHead>
-                        <TableHead>Best For</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      <TableRow>
-                        <TableCell>OpenAI text-embedding-3-small</TableCell>
-                        <TableCell>1536</TableCell>
-                        <TableCell>General purpose, high quality</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>OpenAI text-embedding-ada-002</TableCell>
-                        <TableCell>1536</TableCell>
-                        <TableCell>Legacy, still good quality</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>Sentence-BERT</TableCell>
-                        <TableCell>768</TableCell>
-                        <TableCell>Offline use, no API costs</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell>CLIP</TableCell>
-                        <TableCell>512</TableCell>
-                        <TableCell>Image embedding</TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
+              <h3 className="text-lg font-semibold mb-3">Advanced Search Options</h3>
+              <ul className="space-y-4">
+                <li className="flex items-start gap-2">
+                  <div className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
+                    <Search className="h-3 w-3" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Metadata Filtering</span>
+                    <p className="text-sm text-muted-foreground">
+                      Filter results based on metadata values. For example, search only within a specific category:
+                    </p>
+                    <div className="bg-muted p-2 rounded-md mt-1 overflow-x-auto">
+                      <pre className="text-sm">
+                        <code>
+                          {`{
+  "field": "category", 
+  "operator": "=", 
+  "value": "documentation"
+}`}
+                        </code>
+                      </pre>
+                    </div>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
+                    <ArrowUpDown className="h-3 w-3" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Distance Threshold</span>
+                    <p className="text-sm text-muted-foreground">
+                      Set a maximum distance threshold to only return results below a certain distance.
+                      Useful for ensuring only truly similar items are returned.
+                    </p>
+                  </div>
+                </li>
+                <li className="flex items-start gap-2">
+                  <div className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
+                    <BarChart4 className="h-3 w-3" />
+                  </div>
+                  <div>
+                    <span className="font-medium">Hybrid Search</span>
+                    <p className="text-sm text-muted-foreground">
+                      Combine vector similarity with metadata filtering for more precise results.
+                      For example, find the most similar articles within a specific date range.
+                    </p>
+                  </div>
+                </li>
+              </ul>
             </CardContent>
           </Card>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-2xl font-bold">Performing Vector Searches</h2>
           
-          <h3 className="text-xl font-semibold mt-6">Basic Similarity Search</h3>
-          <p>
-            To search for similar vectors:
-          </p>
-          <ol className="list-decimal list-inside space-y-2 ml-4">
-            <li>Go to your collection&apos;s &quot;Search&quot; tab</li>
-            <li>Enter a query text or upload a vector directly</li>
-            <li>Set the number of results to return (k)</li>
-            <li>Click &quot;Search&quot;</li>
-          </ol>
-          
-          <div className="bg-muted p-4 rounded-md mt-4 overflow-x-auto">
-            <pre className="text-sm">
-              <code>
-                {`// Example search API request
-POST /api/vectors/collections/my_collection/search
-{
-  "query": "What is machine learning?",
-  "top_k": 5,
-  "include_metadata": true
-}`}
-              </code>
-            </pre>
-          </div>
-          
-          <h3 className="text-xl font-semibold mt-6">Advanced Search Features</h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <Search className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold">Metadata Filtering</h4>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Filter results based on metadata fields to narrow search results:
-                    </p>
-                    <div className="bg-muted p-2 rounded-md mt-2 overflow-x-auto">
-                      <pre className="text-xs">
-                        <code>
-                          {`{
-  "query": "neural networks",
-  "filter": {
-    "category": "AI",
-    "date": { "$gte": "2022-01-01" }
-  }
-}`}
-                        </code>
-                      </pre>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <BarChart className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h4 className="font-semibold">Hybrid Search</h4>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Combine vector similarity with keyword search for better results:
-                    </p>
-                    <div className="bg-muted p-2 rounded-md mt-2 overflow-x-auto">
-                      <pre className="text-xs">
-                        <code>
-                          {`{
-  "query": "machine learning algorithms",
-  "hybrid": {
-    "keywords": "neural networks",
-    "weight": 0.3
-  }
-}`}
-                        </code>
-                      </pre>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-2xl font-bold">Building Applications with Vector Search</h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <Lightbulb className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Semantic Search Engine</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Create a search engine that understands the meaning behind queries rather than 
-                      just matching keywords, significantly improving search relevance.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <Brain className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">RAG with LLMs</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Implement Retrieval-Augmented Generation by combining vector search with Large 
-                      Language Models to provide accurate, knowledge-grounded responses.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <Boxes className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Recommendation Systems</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Build content or product recommendation systems that suggest items based on 
-                      semantic similarity instead of just collaborative filtering.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <Code className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold">Code Search</h3>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Implement semantic code search that understands programming concepts and can find 
-                      relevant code snippets even when the query uses different terminology.
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        </section>
-
-        <section className="space-y-4">
-          <h2 className="text-2xl font-bold">Integrating with Your Application</h2>
-          <p>
-            LumosDB provides simple APIs to integrate vector search into your applications:
-          </p>
-          
-          <div className="bg-muted p-4 rounded-md mt-4 overflow-x-auto">
-            <pre className="text-sm">
-              <code>
-                {`// JavaScript/TypeScript example
-import { LumosDBClient } from '@lumosdb/client';
-
-const client = new LumosDBClient({
-  apiKey: 'your_api_key',
-  serverUrl: 'http://your-lumosdb-instance'
-});
-
-// Search for similar vectors
-async function searchSimilarDocuments(query) {
-  const results = await client.vectors.search({
-    collectionName: 'documents',
-    query: query,
-    topK: 5,
-    includeMetadata: true
-  });
-  
-  return results;
-}
-
-// Add new vectors
-async function addDocument(text, metadata) {
-  const result = await client.vectors.add({
-    collectionName: 'documents',
-    texts: [text],
-    metadata: [metadata]
-  });
-  
-  return result;
-}`}
-              </code>
-            </pre>
-          </div>
-          
-          <Alert className="mt-6">
-            <Info className="h-4 w-4" />
-            <AlertTitle>API Documentation</AlertTitle>
+          <Alert className="mt-4">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Search Performance Tip</AlertTitle>
             <AlertDescription>
-              For full API documentation, visit the API Reference section or access the Swagger UI at 
-              <code className="ml-1 bg-muted px-1 py-0.5 rounded">/api/docs</code> endpoint on your LumosDB instance.
+              To optimize search performance, use metadata filters to narrow the search space before 
+              performing vector similarity calculations. This can dramatically improve search times 
+              on large collections.
             </AlertDescription>
           </Alert>
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-bold">Performance Optimization</h2>
+          <h2 className="text-2xl font-bold">Application Integration</h2>
+          
           <p>
-            To get the best performance from your vector database:
+            Integrate vector search into your applications using the LumosDB API:
           </p>
           
-          <ul className="list-disc list-inside space-y-2 ml-4">
-            <li>
-              <span className="font-medium">Index Configuration</span>: Use HNSW or IVF indexes for large collections
-            </li>
-            <li>
-              <span className="font-medium">Vector Dimension</span>: Lower dimensions are faster to query
-            </li>
-            <li>
-              <span className="font-medium">Batch Operations</span>: Use batch insert/update/delete for better throughput
-            </li>
-            <li>
-              <span className="font-medium">Filtering</span>: Apply metadata filters to reduce the search space
-            </li>
-            <li>
-              <span className="font-medium">Hardware</span>: Allocate more RAM for larger collections
-            </li>
-          </ul>
+          <div className="bg-muted p-4 rounded-md overflow-x-auto mt-4">
+            <pre className="text-sm">
+              <code>
+                {`// JavaScript example - Vector search with metadata filter
+const response = await fetch('/api/vector/collections/my_collection/search', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    vector: [0.1, 0.2, 0.3], // Query vector
+    k: 10, // Number of results to return
+    filter: {
+      field: 'category',
+      operator: '=',
+      value: 'documentation'
+    }
+  })
+});
+
+const results = await response.json();
+// Results format:
+
+// [
+//   {
+//     id: '1234',
+//     vector: [...],
+//     metadata: { ... },
+//     distance: 0.123 // Similarity score
+//   },
+//   ...
+// ]`}
+              </code>
+            </pre>
+          </div>
           
-          <p className="mt-4">
-            LumosDB provides monitoring tools to help you identify and fix performance bottlenecks in your 
-            vector search operations.
-          </p>
+          <Alert className="mt-6">
+            <FileCode className="h-4 w-4" />
+            <AlertTitle>API Documentation</AlertTitle>
+            <AlertDescription>
+              For a complete reference of the LumosDB Vector API, including all available endpoints 
+              and parameters, visit the API documentation section.
+            </AlertDescription>
+          </Alert>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-2xl font-bold">Best Practices</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+            <Card>
+              <CardContent className="pt-6">
+                <h3 className="font-semibold">Optimizing Vector Dimensions</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Choose the appropriate dimension for your use case. Higher dimensions capture more 
+                  information but require more storage and processing time. For many text applications, 
+                  768-1536 dimensions are sufficient.
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="pt-6">
+                <h3 className="font-semibold">Choosing the Right Distance Metric</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  • Cosine similarity: Best for text embeddings where direction matters more than magnitude
+                  <br />
+                  • Euclidean distance: Good for image embeddings where absolute distance matters
+                  <br />
+                  • Dot product: Useful when vectors are already normalized
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="pt-6">
+                <h3 className="font-semibold">Effective Metadata Strategy</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Store relevant metadata with your vectors to enable filtering and provide context. 
+                  Common metadata fields include document source, timestamp, categories, and keywords.
+                </p>
+              </CardContent>
+            </Card>
+            
+            <Card>
+              <CardContent className="pt-6">
+                <h3 className="font-semibold">Performance Considerations</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  • Use HNSW index for large collections (&gt;100K vectors)
+                  <br />
+                  • Apply metadata filters first to reduce the search space
+                  <br />
+                  • Consider chunking large documents before embedding
+                  <br />
+                  • Monitor and adjust your k value based on result quality
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         </section>
 
         <Separator className="my-6" />
@@ -465,17 +492,17 @@ async function addDocument(text, metadata) {
           <Button variant="ghost" size="sm" asChild>
             <Link href="/dashboard/docs/duckdb-guide">
               <ChevronLeft className="mr-2 h-4 w-4" />
-              Previous: Working with DuckDB
+              Previous: DuckDB Guide
             </Link>
           </Button>
           <Button asChild>
-            <Link href="/dashboard/docs/sql-editor">
-              Next: SQL Editor Tutorial
+            <Link href="/dashboard/docs/backup-recovery">
+              Next: Backup & Recovery
               <ChevronLeft className="ml-2 h-4 w-4 rotate-180" />
             </Link>
           </Button>
         </div>
       </div>
-    </ResponsiveContainer>
+    </DocWrapper>
   )
 } 

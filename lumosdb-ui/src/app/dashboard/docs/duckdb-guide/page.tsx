@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ResponsiveContainer } from "@/components/ui/responsive-container"
+import { DocWrapper } from "@/components/doc-wrapper"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent } from "@/components/ui/card"
@@ -25,7 +25,7 @@ import {
 
 export default function DuckDBGuidePage() {
   return (
-    <ResponsiveContainer className="max-w-4xl mx-auto p-6">
+    <DocWrapper>
       <div className="flex items-center mb-6">
         <Link href="/dashboard/docs">
           <Button variant="ghost" size="sm" className="gap-1">
@@ -143,14 +143,14 @@ export default function DuckDBGuidePage() {
                   <div className="bg-muted p-4 rounded-md overflow-x-auto">
                     <pre className="text-sm">
                       <code>
-                        -- Copy from a CSV file
-                        {"\n"}COPY sales FROM 'sales_data.csv' (DELIMITER ',', HEADER);
-                        {"\n"}
-                        {"\n"}-- Query directly from CSV
-                        {"\n"}SELECT * FROM read_csv_auto('sales_data.csv');
-                        {"\n"}
-                        {"\n"}-- Load with custom options
-                        {"\n"}SELECT * FROM read_csv('sales_data.csv', delim=',', header=true, columns={'date': 'DATE', 'amount': 'DOUBLE'});
+                        {`-- Copy from a CSV file
+COPY sales FROM 'sales_data.csv' (DELIMITER ',', HEADER);
+
+-- Query directly from CSV
+SELECT * FROM read_csv_auto('sales_data.csv');
+
+-- Load with custom options
+SELECT * FROM read_csv('sales_data.csv', delim=',', header=true, columns={'date': 'DATE', 'amount': 'DOUBLE'});`}
                       </code>
                     </pre>
                   </div>
@@ -171,14 +171,14 @@ export default function DuckDBGuidePage() {
                   <div className="bg-muted p-4 rounded-md overflow-x-auto">
                     <pre className="text-sm">
                       <code>
-                        -- Query directly from Parquet
-                        {"\n"}SELECT * FROM 'large_dataset.parquet';
-                        {"\n"}
-                        {"\n"}-- Use read_parquet function
-                        {"\n"}SELECT * FROM read_parquet('large_dataset.parquet');
-                        {"\n"}
-                        {"\n"}-- Create a table from Parquet
-                        {"\n"}CREATE TABLE sales AS SELECT * FROM 'large_dataset.parquet';
+                        {`-- Query directly from Parquet
+SELECT * FROM 'large_dataset.parquet';
+
+-- Use read_parquet function
+SELECT * FROM read_parquet('large_dataset.parquet');
+
+-- Create a table from Parquet
+CREATE TABLE sales AS SELECT * FROM 'large_dataset.parquet';`}
                       </code>
                     </pre>
                   </div>
@@ -199,13 +199,13 @@ export default function DuckDBGuidePage() {
                   <div className="bg-muted p-4 rounded-md overflow-x-auto">
                     <pre className="text-sm">
                       <code>
-                        -- Read JSON file
-                        {"\n"}SELECT * FROM read_json_auto('data.json');
-                        {"\n"}
-                        {"\n"}-- Read JSON with schema
-                        {"\n"}SELECT * FROM read_json('data.json', 
-                        {"\n"}  format='array', 
-                        {"\n"}  columns={{'id': 'INTEGER', 'name': 'VARCHAR', 'active': 'BOOLEAN'}});
+                        {`-- Read JSON file
+SELECT * FROM read_json_auto('data.json');
+
+-- Read JSON with schema
+SELECT * FROM read_json('data.json', 
+  format='array', 
+  columns={"id": "INTEGER", "name": "VARCHAR", "active": "BOOLEAN"});`}
                       </code>
                     </pre>
                   </div>
@@ -227,12 +227,12 @@ export default function DuckDBGuidePage() {
                     <pre className="text-sm">
                       <code>
                         -- Import from SQLite in LumosDB
-                        {"\n"}CREATE TABLE analytics_data AS 
-                        {"\n"}  SELECT * FROM sqlite_scan('path/to/sqlite.db', 'table_name');
-                        {"\n"}
-                        {"\n"}-- Import using CSV as intermediary
-                        {"\n"}COPY (SELECT * FROM source_table) TO 'temp.csv';
-                        {"\n"}COPY target_table FROM 'temp.csv' (HEADER);
+                        CREATE TABLE analytics_data AS 
+                          SELECT * FROM sqlite_scan('path/to/sqlite.db', 'table_name');
+
+                        -- Import using CSV as intermediary
+                        COPY (SELECT * FROM source_table) TO 'temp.csv';
+                        COPY target_table FROM 'temp.csv' (HEADER);
                       </code>
                     </pre>
                   </div>
@@ -253,16 +253,16 @@ export default function DuckDBGuidePage() {
             <pre className="text-sm">
               <code>
                 -- Basic aggregation
-                {"\n"}SELECT 
-                {"\n"}  category,
-                {"\n"}  COUNT(*) as num_products,
-                {"\n"}  SUM(sales) as total_sales,
-                {"\n"}  AVG(price) as avg_price,
-                {"\n"}  MIN(price) as min_price,
-                {"\n"}  MAX(price) as max_price
-                {"\n"}FROM products
-                {"\n"}GROUP BY category
-                {"\n"}ORDER BY total_sales DESC;
+                SELECT 
+                  category,
+                  COUNT(*) as num_products,
+                  SUM(sales) as total_sales,
+                  AVG(price) as avg_price,
+                  MIN(price) as min_price,
+                  MAX(price) as max_price
+                FROM products
+                GROUP BY category
+                ORDER BY total_sales DESC;
               </code>
             </pre>
           </div>
@@ -272,15 +272,15 @@ export default function DuckDBGuidePage() {
             <pre className="text-sm">
               <code>
                 -- Window functions for time-series analysis
-                {"\n"}SELECT
-                {"\n"}  date,
-                {"\n"}  sales,
-                {"\n"}  SUM(sales) OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7day_sales,
-                {"\n"}  AVG(sales) OVER (PARTITION BY EXTRACT(month FROM date) ORDER BY date) as monthly_avg,
-                {"\n"}  LAG(sales, 1, 0) OVER (ORDER BY date) as previous_day_sales,
-                {"\n"}  (sales - LAG(sales, 1, sales) OVER (ORDER BY date)) / LAG(sales, 1, sales) OVER (ORDER BY date) * 100 as daily_pct_change
-                {"\n"}FROM daily_sales
-                {"\n"}ORDER BY date;
+                SELECT
+                  date,
+                  sales,
+                  SUM(sales) OVER (ORDER BY date ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as rolling_7day_sales,
+                  AVG(sales) OVER (PARTITION BY EXTRACT(month FROM date) ORDER BY date) as monthly_avg,
+                  LAG(sales, 1, 0) OVER (ORDER BY date) as previous_day_sales,
+                  (sales - LAG(sales, 1, sales) OVER (ORDER BY date)) / LAG(sales, 1, sales) OVER (ORDER BY date) * 100 as daily_pct_change
+                FROM daily_sales
+                ORDER BY date;
               </code>
             </pre>
           </div>
@@ -290,18 +290,18 @@ export default function DuckDBGuidePage() {
             <pre className="text-sm">
               <code>
                 -- Date and time manipulations
-                {"\n"}SELECT
-                {"\n"}  EXTRACT(YEAR FROM transaction_date) as year,
-                {"\n"}  EXTRACT(MONTH FROM transaction_date) as month,
-                {"\n"}  EXTRACT(DOW FROM transaction_date) as day_of_week,
-                {"\n"}  CASE 
-                {"\n"}    WHEN EXTRACT(DOW FROM transaction_date) IN (0, 6) THEN 'Weekend'
-                {"\n"}    ELSE 'Weekday'
-                {"\n"}  END as day_type,
-                {"\n"}  SUM(amount) as total_amount
-                {"\n"}FROM transactions
-                {"\n"}GROUP BY year, month, day_of_week, day_type
-                {"\n"}ORDER BY year, month, day_of_week;
+                SELECT
+                  EXTRACT(YEAR FROM transaction_date) as year,
+                  EXTRACT(MONTH FROM transaction_date) as month,
+                  EXTRACT(DOW FROM transaction_date) as day_of_week,
+                  CASE 
+                    WHEN EXTRACT(DOW FROM transaction_date) IN (0, 6) THEN 'Weekend'
+                    ELSE 'Weekday'
+                  END as day_type,
+                  SUM(amount) as total_amount
+                FROM transactions
+                GROUP BY year, month, day_of_week, day_type
+                ORDER BY year, month, day_of_week;
               </code>
             </pre>
           </div>
@@ -391,13 +391,13 @@ export default function DuckDBGuidePage() {
             <pre className="text-sm">
               <code>
                 -- Export to CSV
-                {"\n"}COPY (SELECT * FROM analysis_results) TO 'results.csv' (HEADER);
-                {"\n"}
-                {"\n"}-- Export to Parquet (efficient for large results)
-                {"\n"}COPY (SELECT * FROM analysis_results) TO 'results.parquet' (FORMAT PARQUET);
-                {"\n"}
-                {"\n"}-- Export to JSON
-                {"\n"}COPY (SELECT * FROM analysis_results) TO 'results.json' (FORMAT JSON);
+                COPY (SELECT * FROM analysis_results) TO 'results.csv' (HEADER);
+
+                -- Export to Parquet (efficient for large results)
+                COPY (SELECT * FROM analysis_results) TO 'results.parquet' (FORMAT PARQUET);
+
+                -- Export to JSON
+                COPY (SELECT * FROM analysis_results) TO 'results.json' (FORMAT JSON);
               </code>
             </pre>
           </div>
@@ -449,6 +449,6 @@ export default function DuckDBGuidePage() {
           </Button>
         </div>
       </div>
-    </ResponsiveContainer>
+    </DocWrapper>
   )
 } 

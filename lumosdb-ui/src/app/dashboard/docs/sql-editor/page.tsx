@@ -6,22 +6,19 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { 
+  Code, 
   ChevronLeft, 
-  Pencil,
-  Code,
+  Terminal,
   Save,
-  Play,
-  Settings,
-  Table2,
   History,
-  Bookmark,
-  Download,
-  ChevronRight,
-  Info,
+  FileDown,
   Lightbulb,
+  LayoutGrid,
+  Table2,
+  KeyRound,
   Keyboard
 } from "lucide-react"
 
@@ -51,28 +48,28 @@ export default function SQLEditorPage() {
             <h1 className="text-3xl font-bold">SQL Editor Tutorial</h1>
           </div>
           <p className="text-lg text-muted-foreground mb-6">
-            Learn how to use the LumosDB SQL Editor for database querying and management
+            How to use the SQL Editor to query and manage your databases in LumosDB
           </p>
           <Separator className="my-6" />
         </div>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-bold">Introduction to SQL Editor</h2>
+          <h2 className="text-2xl font-bold">Introduction to the SQL Editor</h2>
           <p>
-            The LumosDB SQL Editor is a powerful tool for interacting with your databases using SQL 
-            queries. It provides a seamless interface for writing, executing, and managing SQL 
-            statements across different database types.
+            The SQL Editor in LumosDB provides a powerful interface for writing, executing, and 
+            managing SQL queries for your databases. It supports both SQLite and DuckDB dialects, 
+            with features like syntax highlighting, auto-completion, and result visualization.
           </p>
           <p>
             Key features of the SQL Editor include:
           </p>
           <ul className="list-disc list-inside space-y-2 ml-4">
-            <li>Syntax highlighting and code completion</li>
-            <li>Multiple database connection support</li>
+            <li>Syntax highlighting with error detection</li>
+            <li>Auto-completion for tables, columns, and SQL keywords</li>
             <li>Query history and saved queries</li>
-            <li>Visual query results with export options</li>
-            <li>Schema browser integration</li>
-            <li>Performance optimization suggestions</li>
+            <li>Multiple result formats (table, JSON, chart)</li>
+            <li>Export functionality for query results</li>
+            <li>Keyboard shortcuts for improved productivity</li>
           </ul>
         </section>
 
@@ -85,301 +82,197 @@ export default function SQLEditorPage() {
           </p>
           <ol className="list-decimal list-inside space-y-3 ml-4">
             <li>
-              <span className="font-medium">Navigate to the SQL section</span>
+              <span className="font-medium">Navigate to your database</span>
               <p className="text-muted-foreground ml-6 mt-1">
-                Click on &quot;SQL Editor&quot; in the main navigation sidebar.
+                Select either SQLite or DuckDB from the sidebar, then choose your database.
               </p>
             </li>
             <li>
-              <span className="font-medium">Select a database connection</span>
+              <span className="font-medium">Click on "SQL Editor" tab</span>
               <p className="text-muted-foreground ml-6 mt-1">
-                Choose from your existing database connections or create a new one.
+                This will open the SQL Editor interface for the selected database.
               </p>
             </li>
             <li>
-              <span className="font-medium">Start writing queries</span>
+              <span className="font-medium">Alternatively, use the global SQL Editor</span>
               <p className="text-muted-foreground ml-6 mt-1">
-                Use the editor area to write your SQL statements.
+                Click "SQL Editor" in the main sidebar to open a global editor where you can select any database.
               </p>
             </li>
           </ol>
           
-          <div className="mt-6 rounded-md overflow-hidden border bg-muted">
-            <div className="bg-muted p-2 border-b">
-              <div className="flex items-center">
-                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 mr-2">
-                  <Info className="h-3.5 w-3.5" />
+          <Card className="mt-6">
+            <CardContent className="pt-6">
+              <div className="flex items-start gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
+                  <LayoutGrid className="h-4 w-4" />
                 </div>
-                <span className="text-sm font-semibold">SQL Editor Interface</span>
-              </div>
-            </div>
-            <div className="bg-card p-4">
-              <div className="flex flex-col">
-                <div className="flex items-center justify-between p-2 border-b">
-                  <div className="flex gap-2">
-                    <div className="w-24 h-6 bg-muted rounded-md"></div>
-                    <div className="w-24 h-6 bg-primary/20 rounded-md"></div>
-                    <div className="w-24 h-6 bg-muted rounded-md"></div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="ghost" disabled className="h-6">
-                      <Settings className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" disabled className="h-6">
-                      <History className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button size="sm" variant="ghost" disabled className="h-6">
-                      <Bookmark className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="flex h-48">
-                  <div className="w-1/5 border-r p-2">
-                    <div className="text-xs font-semibold mb-2">Databases</div>
-                    <div className="space-y-1">
-                      <div className="flex items-center text-xs p-1 rounded-sm bg-primary/10">
-                        <div className="w-3 h-3 mr-1 bg-primary/30 rounded-sm"></div>
-                        <span>example_db</span>
-                      </div>
-                      <div className="flex items-center text-xs p-1">
-                        <div className="w-3 h-3 mr-1 bg-muted rounded-sm"></div>
-                        <span>analytics</span>
-                      </div>
-                      <div className="flex items-center text-xs p-1">
-                        <div className="w-3 h-3 mr-1 bg-muted rounded-sm"></div>
-                        <span>users</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="w-4/5 flex flex-col">
-                    <div className="h-24 p-2 border-b text-xs font-mono bg-background">
-                      <div className="font-semibold text-muted-foreground mb-1">-- SQL Query Editor</div>
-                      <div>SELECT * </div>
-                      <div>FROM users</div>
-                      <div>WHERE created_at &gt; &#39;2023-01-01&#39;</div>
-                      <div>LIMIT 10;</div>
-                    </div>
-                    <div className="flex-1 p-2">
-                      <div className="flex justify-between mb-2">
-                        <div className="text-xs font-semibold">Results</div>
-                        <Button size="sm" variant="ghost" disabled className="h-5">
-                          <Download className="h-3 w-3" />
-                        </Button>
-                      </div>
-                      <div className="text-xs">
-                        <div className="grid grid-cols-3 gap-2 bg-muted p-1">
-                          <div>id</div>
-                          <div>name</div>
-                          <div>created_at</div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 p-1 border-b">
-                          <div>1</div>
-                          <div>John Doe</div>
-                          <div>2023-05-12</div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 p-1 border-b">
-                          <div>2</div>
-                          <div>Jane Smith</div>
-                          <div>2023-05-15</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                <div>
+                  <h4 className="font-semibold">SQL Editor Layout</h4>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    The SQL Editor consists of the following sections:
+                  </p>
+                  <ul className="list-disc list-inside text-sm mt-2">
+                    <li>Query editor panel (top) - where you write your SQL</li>
+                    <li>Results panel (bottom) - displays query results</li>
+                    <li>Database explorer (left sidebar) - shows tables and columns</li>
+                    <li>Controls bar - with run, save, and export buttons</li>
+                  </ul>
                 </div>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-2xl font-bold">Writing SQL Queries</h2>
           
-          <Tabs defaultValue="basic" className="mt-6">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="basic">Basic Queries</TabsTrigger>
-              <TabsTrigger value="intermediate">Intermediate</TabsTrigger>
-              <TabsTrigger value="advanced">Advanced</TabsTrigger>
-            </TabsList>
-            <TabsContent value="basic" className="p-4 border rounded-md mt-2">
-              <h3 className="text-lg font-semibold mb-3">Basic SQL Queries</h3>
-              <p className="mb-4">
-                Start with these basic queries to interact with your database:
-              </p>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
-                      <Table2 className="h-4 w-4" />
-                    </div>
-                    <h4 className="font-semibold">SELECT Queries</h4>
-                  </div>
-                  <div className="bg-muted p-3 rounded-md text-sm font-mono">
-                    <div>-- Retrieve all columns from a table</div>
-                    <div>SELECT * FROM table_name;</div>
-                    <div className="mt-2">-- Retrieve specific columns</div>
-                    <div>SELECT column1, column2 FROM table_name;</div>
-                    <div className="mt-2">-- Apply a simple filter</div>
-                    <div>SELECT * FROM table_name WHERE column_name = &#39;value&#39;;</div>
-                    <div className="mt-2">-- Sort results</div>
-                    <div>SELECT * FROM table_name ORDER BY column_name ASC;</div>
-                    <div className="mt-2">-- Limit results</div>
-                    <div>SELECT * FROM table_name LIMIT 10;</div>
-                  </div>
-                </div>
-                
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
-                      <Pencil className="h-4 w-4" />
-                    </div>
-                    <h4 className="font-semibold">INSERT Statements</h4>
-                  </div>
-                  <div className="bg-muted p-3 rounded-md text-sm font-mono">
-                    <div>-- Insert a new row</div>
-                    <div>INSERT INTO table_name (column1, column2)</div>
-                    <div>VALUES (&#39;value1&#39;, &#39;value2&#39;);</div>
-                    <div className="mt-2">-- Insert multiple rows</div>
-                    <div>INSERT INTO table_name (column1, column2)</div>
-                    <div>VALUES</div>
-                    <div>  (&#39;value1&#39;, &#39;value2&#39;),</div>
-                    <div>  (&#39;value3&#39;, &#39;value4&#39;);</div>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="intermediate" className="p-4 border rounded-md mt-2">
-              <h3 className="text-lg font-semibold mb-3">Intermediate SQL Queries</h3>
-              <p className="mb-4">
-                Expand your SQL knowledge with these intermediate concepts:
-              </p>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
-                      <Table2 className="h-4 w-4" />
-                    </div>
-                    <h4 className="font-semibold">JOIN Operations</h4>
-                  </div>
-                  <div className="bg-muted p-3 rounded-md text-sm font-mono">
-                    <div>-- Inner join between two tables</div>
-                    <div>SELECT a.column1, b.column2</div>
-                    <div>FROM table_a AS a</div>
-                    <div>JOIN table_b AS b ON a.id = b.a_id;</div>
-                    <div className="mt-2">-- Left join (keep all rows from left table)</div>
-                    <div>SELECT a.column1, b.column2</div>
-                    <div>FROM table_a AS a</div>
-                    <div>LEFT JOIN table_b AS b ON a.id = b.a_id;</div>
-                  </div>
-                </div>
-                
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
-                      <Code className="h-4 w-4" />
-                    </div>
-                    <h4 className="font-semibold">Aggregation Functions</h4>
-                  </div>
-                  <div className="bg-muted p-3 rounded-md text-sm font-mono">
-                    <div>-- Count records</div>
-                    <div>SELECT COUNT(*) FROM table_name;</div>
-                    <div className="mt-2">-- Group by with aggregation</div>
-                    <div>SELECT category, AVG(price) as avg_price</div>
-                    <div>FROM products</div>
-                    <div>GROUP BY category;</div>
-                    <div className="mt-2">-- Having clause (filter on aggregated data)</div>
-                    <div>SELECT category, COUNT(*) as product_count</div>
-                    <div>FROM products</div>
-                    <div>GROUP BY category</div>
-                    <div>HAVING COUNT(*) > 5;</div>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="advanced" className="p-4 border rounded-md mt-2">
-              <h3 className="text-lg font-semibold mb-3">Advanced SQL Queries</h3>
-              <p className="mb-4">
-                Master advanced SQL techniques with these examples:
-              </p>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
-                      <Code className="h-4 w-4" />
-                    </div>
-                    <h4 className="font-semibold">Common Table Expressions (CTEs)</h4>
-                  </div>
-                  <div className="bg-muted p-3 rounded-md text-sm font-mono">
-                    <div>-- Basic CTE usage</div>
-                    <div>WITH active_users AS (</div>
-                    <div>  SELECT id, name, email</div>
-                    <div>  FROM users</div>
-                    <div>  WHERE status = &#39;active&#39;</div>
-                    <div>)</div>
-                    <div>SELECT * FROM active_users</div>
-                    <div>WHERE created_at > &#39;2023-01-01&#39;;</div>
-                    <div className="mt-2">-- Multiple CTEs</div>
-                    <div>WITH active_users AS (</div>
-                    <div>  SELECT id, name, email FROM users WHERE status = &#39;active&#39;</div>
-                    <div>),</div>
-                    <div>recent_orders AS (</div>
-                    <div>  SELECT user_id, COUNT(*) as order_count</div>
-                    <div>  FROM orders</div>
-                    <div>  WHERE created_at > &#39;2023-06-01&#39;</div>
-                    <div>  GROUP BY user_id</div>
-                    <div>)</div>
-                    <div>SELECT u.name, o.order_count</div>
-                    <div>FROM active_users u</div>
-                    <div>JOIN recent_orders o ON u.id = o.user_id;</div>
-                  </div>
-                </div>
-                
-                <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
-                      <Settings className="h-4 w-4" />
-                    </div>
-                    <h4 className="font-semibold">Window Functions</h4>
-                  </div>
-                  <div className="bg-muted p-3 rounded-md text-sm font-mono">
-                    <div>-- Row numbering within partitions</div>
-                    <div>SELECT</div>
-                    <div>  id,</div>
-                    <div>  name,</div>
-                    <div>  department,</div>
-                    <div>  salary,</div>
-                    <div>  ROW_NUMBER() OVER (PARTITION BY department ORDER BY salary DESC) as rank</div>
-                    <div>FROM employees;</div>
-                    <div className="mt-2">-- Running totals</div>
-                    <div>SELECT</div>
-                    <div>  date,</div>
-                    <div>  amount,</div>
-                    <div>  SUM(amount) OVER (ORDER BY date) as running_total</div>
-                    <div>FROM transactions;</div>
-                  </div>
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
+          <h3 className="text-xl font-semibold mt-6">Basic Queries</h3>
+          <p>
+            The editor supports all standard SQL queries. Here are some examples:
+          </p>
+          
+          <div className="bg-muted p-4 rounded-md mt-4 overflow-x-auto">
+            <pre className="text-sm">
+              <code>
+                -- Select all columns from a table
+                {"\n"}SELECT * FROM users;
+                {"\n"}
+                {"\n"}-- Select specific columns with a condition
+                {"\n"}SELECT id, name, email 
+                {"\n"}FROM users 
+                {"\n"}WHERE status = 'active';
+                {"\n"}
+                {"\n"}-- Join tables
+                {"\n"}SELECT users.name, orders.order_date, orders.amount
+                {"\n"}FROM users
+                {"\n"}JOIN orders ON users.id = orders.user_id
+                {"\n"}WHERE orders.status = 'completed';
+              </code>
+            </pre>
+          </div>
+          
+          <h3 className="text-xl font-semibold mt-6">Advanced Queries</h3>
+          
+          <div className="bg-muted p-4 rounded-md mt-4 overflow-x-auto">
+            <pre className="text-sm">
+              <code>
+                -- Aggregate functions
+                {"\n"}SELECT 
+                {"\n"}  category,
+                {"\n"}  COUNT(*) as total_products,
+                {"\n"}  AVG(price) as average_price,
+                {"\n"}  MAX(price) as highest_price
+                {"\n"}FROM products
+                {"\n"}GROUP BY category
+                {"\n"}HAVING COUNT(*) > 5
+                {"\n"}ORDER BY average_price DESC;
+                {"\n"}
+                {"\n"}-- Subqueries
+                {"\n"}SELECT name, email
+                {"\n"}FROM users
+                {"\n"}WHERE id IN (
+                {"\n"}  SELECT DISTINCT user_id
+                {"\n"}  FROM orders
+                {"\n"}  WHERE order_date >= date('now', '-30 days')
+                {"\n"});
+              </code>
+            </pre>
+          </div>
+          
+          <Alert className="mt-6">
+            <Lightbulb className="h-4 w-4" />
+            <AlertTitle>Pro Tip</AlertTitle>
+            <AlertDescription>
+              Use the database explorer on the left to view table structures and column names.
+              You can double-click on table or column names to insert them into your query.
+            </AlertDescription>
+          </Alert>
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-bold">SQL Editor Features</h2>
+          <h2 className="text-2xl font-bold">Executing Queries</h2>
+          
+          <p>
+            To execute a query:
+          </p>
+          <ol className="list-decimal list-inside space-y-2 ml-4">
+            <li>
+              <span className="font-medium">Write your SQL query in the editor</span>
+            </li>
+            <li>
+              <span className="font-medium">Click the "Run" button or press Ctrl+Enter (Cmd+Enter on Mac)</span>
+            </li>
+            <li>
+              <span className="font-medium">View the results in the results panel below</span>
+            </li>
+          </ol>
+          
+          <h3 className="text-xl font-semibold mt-6">Multiple Queries</h3>
+          <p>
+            You can execute multiple queries in a single run:
+          </p>
+          <div className="bg-muted p-4 rounded-md mt-4 overflow-x-auto">
+            <pre className="text-sm">
+              <code>
+                -- First query
+                {"\n"}SELECT COUNT(*) as total_users FROM users;
+                {"\n"}
+                {"\n"}-- Second query
+                {"\n"}SELECT COUNT(*) as active_users FROM users WHERE status = 'active';
+              </code>
+            </pre>
+          </div>
+          <p className="text-sm text-muted-foreground mt-2">
+            When executing multiple queries, results will be displayed as separate tabs in the results panel.
+          </p>
+          
+          <h3 className="text-xl font-semibold mt-6">Transaction Support</h3>
+          <p>
+            You can use transactions to group multiple operations:
+          </p>
+          <div className="bg-muted p-4 rounded-md mt-4 overflow-x-auto">
+            <pre className="text-sm">
+              <code>
+                -- Start a transaction
+                {"\n"}BEGIN TRANSACTION;
+                {"\n"}
+                {"\n"}-- Insert a new user
+                {"\n"}INSERT INTO users (name, email) VALUES ('John Doe', 'john@example.com');
+                {"\n"}
+                {"\n"}-- Get the new user's ID
+                {"\n"}SELECT last_insert_rowid() as user_id;
+                {"\n"}
+                {"\n"}-- Insert related data
+                {"\n"}INSERT INTO user_settings (user_id, theme) VALUES (last_insert_rowid(), 'dark');
+                {"\n"}
+                {"\n"}-- Commit the transaction
+                {"\n"}COMMIT;
+              </code>
+            </pre>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-2xl font-bold">Working with Results</h2>
+          
+          <h3 className="text-xl font-semibold mt-6">Results Display Options</h3>
+          <p>
+            LumosDB SQL Editor provides multiple ways to view your query results:
+          </p>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-start gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <Play className="h-4 w-4" />
+                    <Table2 className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="font-semibold">Query Execution</h3>
+                    <h4 className="font-semibold">Table View</h4>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Execute queries by clicking the Run button or using the keyboard shortcut 
-                      Ctrl+Enter (Cmd+Enter on Mac). You can execute selected portions of a query by 
-                      highlighting the text before running.
+                      The default view displays results in a tabular format with column headers.
+                      You can sort columns by clicking on the header, and resize columns by dragging.
                     </p>
                   </div>
                 </div>
@@ -390,14 +283,13 @@ export default function SQLEditorPage() {
               <CardContent className="pt-6">
                 <div className="flex items-start gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <Save className="h-4 w-4" />
+                    <Code className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="font-semibold">Saved Queries</h3>
+                    <h4 className="font-semibold">JSON View</h4>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Save frequently used queries with a name and description. Access your saved queries 
-                      from the Saved Queries panel. You can organize them by project or purpose for easy 
-                      access.
+                      Switch to JSON view to see results as JSON objects. This is useful for 
+                      inspecting complex data structures or copying data for API testing.
                     </p>
                   </div>
                 </div>
@@ -408,13 +300,13 @@ export default function SQLEditorPage() {
               <CardContent className="pt-6">
                 <div className="flex items-start gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <History className="h-4 w-4" />
+                    <Terminal className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="font-semibold">Query History</h3>
+                    <h4 className="font-semibold">Raw Output</h4>
                     <p className="text-sm text-muted-foreground mt-1">
-                      All executed queries are saved in your query history with timestamps and execution 
-                      results. Quickly reuse previous queries by selecting them from the history panel.
+                      For non-query commands like CREATE TABLE or INSERT, raw output shows 
+                      success messages or affected row counts.
                     </p>
                   </div>
                 </div>
@@ -425,13 +317,13 @@ export default function SQLEditorPage() {
               <CardContent className="pt-6">
                 <div className="flex items-start gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
-                    <Download className="h-4 w-4" />
+                    <FileDown className="h-4 w-4" />
                   </div>
                   <div>
-                    <h3 className="font-semibold">Export Results</h3>
+                    <h4 className="font-semibold">Export Options</h4>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Export query results in multiple formats including CSV, JSON, Excel, and SQL 
-                      INSERT statements. You can export all results or only selected rows.
+                      Export results to CSV, JSON, or Excel formats for further analysis or sharing.
+                      Use the export button in the results toolbar.
                     </p>
                   </div>
                 </div>
@@ -441,111 +333,209 @@ export default function SQLEditorPage() {
         </section>
 
         <section className="space-y-4">
-          <h2 className="text-2xl font-bold">Keyboard Shortcuts</h2>
+          <h2 className="text-2xl font-bold">Managing Queries</h2>
           
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-            <div className="border rounded-md p-3">
-              <div className="flex items-center gap-2 mb-3">
-                <Keyboard className="h-5 w-5 text-muted-foreground" />
-                <span className="font-semibold">Editor Shortcuts</span>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Execute query</span>
-                  <code className="bg-muted px-2 py-0.5 rounded">Ctrl+Enter</code>
-                </div>
-                <div className="flex justify-between">
-                  <span>Save query</span>
-                  <code className="bg-muted px-2 py-0.5 rounded">Ctrl+S</code>
-                </div>
-                <div className="flex justify-between">
-                  <span>Format SQL</span>
-                  <code className="bg-muted px-2 py-0.5 rounded">Ctrl+Shift+F</code>
-                </div>
-                <div className="flex justify-between">
-                  <span>Find</span>
-                  <code className="bg-muted px-2 py-0.5 rounded">Ctrl+F</code>
-                </div>
-                <div className="flex justify-between">
-                  <span>Replace</span>
-                  <code className="bg-muted px-2 py-0.5 rounded">Ctrl+H</code>
-                </div>
-              </div>
-            </div>
-            
-            <div className="border rounded-md p-3">
-              <div className="flex items-center gap-2 mb-3">
-                <Keyboard className="h-5 w-5 text-muted-foreground" />
-                <span className="font-semibold">Navigation Shortcuts</span>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Open saved queries</span>
-                  <code className="bg-muted px-2 py-0.5 rounded">Alt+Q</code>
-                </div>
-                <div className="flex justify-between">
-                  <span>Open history</span>
-                  <code className="bg-muted px-2 py-0.5 rounded">Alt+H</code>
-                </div>
-                <div className="flex justify-between">
-                  <span>Toggle schema browser</span>
-                  <code className="bg-muted px-2 py-0.5 rounded">Alt+S</code>
-                </div>
-                <div className="flex justify-between">
-                  <span>New query tab</span>
-                  <code className="bg-muted px-2 py-0.5 rounded">Ctrl+T</code>
-                </div>
-                <div className="flex justify-between">
-                  <span>Close query tab</span>
-                  <code className="bg-muted px-2 py-0.5 rounded">Ctrl+W</code>
-                </div>
-              </div>
-            </div>
+          <h3 className="text-xl font-semibold mt-6">Saving Queries</h3>
+          <p>
+            To save a query for future use:
+          </p>
+          <ol className="list-decimal list-inside space-y-2 ml-4">
+            <li>Write your query in the editor</li>
+            <li>Click the "Save" button <Save className="inline h-4 w-4" /></li>
+            <li>Enter a name for your query</li>
+            <li>Optionally add a description and tags</li>
+            <li>Click "Save"</li>
+          </ol>
+          <p className="text-sm text-muted-foreground mt-2">
+            Saved queries can be accessed from the "Saved" tab in the sidebar. You can organize them by folders 
+            and mark frequently used queries as favorites.
+          </p>
+          
+          <h3 className="text-xl font-semibold mt-6">Query History</h3>
+          <p>
+            LumosDB automatically keeps a history of your executed queries:
+          </p>
+          <ul className="list-disc list-inside space-y-2 ml-4">
+            <li>Click the "History" button <History className="inline h-4 w-4" /> to view recent queries</li>
+            <li>Select any query from the history to load it into the editor</li>
+            <li>You can save queries from the history to your saved queries</li>
+            <li>History includes execution time and result statistics</li>
+          </ul>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-2xl font-bold">Keyboard Shortcuts</h2>
+          <p>
+            The SQL Editor supports many keyboard shortcuts for efficient usage:
+          </p>
+          
+          <Table className="mt-4">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Action</TableHead>
+                <TableHead>Windows/Linux</TableHead>
+                <TableHead>macOS</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableCell className="font-medium">Execute Query</TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Enter</kbd></TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Cmd</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Enter</kbd></TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Save Query</TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">S</kbd></TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Cmd</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">S</kbd></TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Format SQL</TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Shift</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">F</kbd></TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Cmd</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Shift</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">F</kbd></TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Comment Line</TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">/</kbd></TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Cmd</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">/</kbd></TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Find</TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">F</kbd></TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Cmd</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">F</kbd></TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Replace</TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">H</kbd></TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Cmd</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">H</kbd></TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Undo</TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Z</kbd></TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Cmd</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Z</kbd></TableCell>
+              </TableRow>
+              <TableRow>
+                <TableCell className="font-medium">Redo</TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Ctrl</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Y</kbd></TableCell>
+                <TableCell><kbd className="px-1 py-0.5 bg-muted rounded">Cmd</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Shift</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Z</kbd></TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+          
+          <Alert className="mt-6">
+            <Keyboard className="h-4 w-4" />
+            <AlertTitle>Keyboard Shortcut Reference</AlertTitle>
+            <AlertDescription>
+              You can view all available keyboard shortcuts by pressing <kbd className="px-1 py-0.5 bg-muted rounded">F1</kbd> or 
+              clicking the keyboard icon in the editor toolbar.
+            </AlertDescription>
+          </Alert>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="text-2xl font-bold">Advanced Features</h2>
+          
+          <h3 className="text-xl font-semibold mt-6">Auto-completion</h3>
+          <p>
+            The SQL Editor provides intelligent auto-completion:
+          </p>
+          <ul className="list-disc list-inside space-y-2 ml-4">
+            <li>Table names after <code>FROM</code>, <code>JOIN</code>, etc.</li>
+            <li>Column names based on the tables in your query</li>
+            <li>SQL keywords and functions</li>
+            <li>Alias suggestions</li>
+          </ul>
+          <p className="text-sm text-muted-foreground mt-2">
+            Trigger auto-completion by typing or pressing <kbd className="px-1 py-0.5 bg-muted rounded">Ctrl</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Space</kbd> 
+            (<kbd className="px-1 py-0.5 bg-muted rounded">Cmd</kbd> + <kbd className="px-1 py-0.5 bg-muted rounded">Space</kbd> on Mac).
+          </p>
+          
+          <h3 className="text-xl font-semibold mt-6">Query Parameterization</h3>
+          <p>
+            You can use parameters in your queries for reusability:
+          </p>
+          <div className="bg-muted p-4 rounded-md mt-4 overflow-x-auto">
+            <pre className="text-sm">
+              <code>
+                -- Using named parameters
+                {"\n"}SELECT * FROM users WHERE status = :status AND created_at > :since_date;
+                {"\n"}
+                {"\n"}-- Using question mark placeholders (positional parameters)
+                {"\n"}SELECT * FROM products WHERE category = ? AND price > ?;
+              </code>
+            </pre>
+          </div>
+          <p className="text-sm text-muted-foreground mt-2">
+            When a query with parameters is executed, you'll be prompted to provide values for each parameter.
+          </p>
+          
+          <h3 className="text-xl font-semibold mt-6">Query Timing and Explain Plans</h3>
+          <p>
+            Analyze query performance:
+          </p>
+          <ul className="list-disc list-inside space-y-2 ml-4">
+            <li>Query execution time is displayed in the results footer</li>
+            <li>Use <code>EXPLAIN QUERY PLAN</code> to see how SQLite will execute a query</li>
+            <li>Use the "Analyze" button to get detailed performance metrics</li>
+          </ul>
+          <div className="bg-muted p-4 rounded-md mt-4 overflow-x-auto">
+            <pre className="text-sm">
+              <code>
+                -- View the execution plan
+                {"\n"}EXPLAIN QUERY PLAN
+                {"\n"}SELECT users.name, COUNT(orders.id) as order_count
+                {"\n"}FROM users
+                {"\n"}LEFT JOIN orders ON users.id = orders.user_id
+                {"\n"}GROUP BY users.id
+                {"\n"}HAVING order_count > 5;
+              </code>
+            </pre>
           </div>
         </section>
 
         <section className="space-y-4">
           <h2 className="text-2xl font-bold">Best Practices</h2>
           
-          <Alert className="mt-4">
-            <Lightbulb className="h-4 w-4" />
-            <AlertTitle>SQL Query Optimization Tips</AlertTitle>
+          <ul className="list-disc list-inside space-y-3 ml-4">
+            <li>
+              <span className="font-medium">Test complex queries on small data subsets first</span>
+              <p className="text-muted-foreground ml-6 mt-1">
+                Add LIMIT clauses when testing to avoid performance issues with large results.
+              </p>
+            </li>
+            <li>
+              <span className="font-medium">Use transactions for multiple related operations</span>
+              <p className="text-muted-foreground ml-6 mt-1">
+                Wrap related changes in BEGIN/COMMIT to ensure atomicity.
+              </p>
+            </li>
+            <li>
+              <span className="font-medium">Save frequently used queries</span>
+              <p className="text-muted-foreground ml-6 mt-1">
+                Create a library of saved queries to improve productivity.
+              </p>
+            </li>
+            <li>
+              <span className="font-medium">Add comments to complex queries</span>
+              <p className="text-muted-foreground ml-6 mt-1">
+                Document your SQL with comments for future reference.
+              </p>
+            </li>
+            <li>
+              <span className="font-medium">Use the database explorer to understand your schema</span>
+              <p className="text-muted-foreground ml-6 mt-1">
+                Explore tables, indexes, and column types before writing queries.
+              </p>
+            </li>
+          </ul>
+          
+          <Alert className="mt-6">
+            <KeyRound className="h-4 w-4" />
+            <AlertTitle>Security Note</AlertTitle>
             <AlertDescription>
-              <ul className="list-disc list-inside space-y-1 mt-2">
-                <li>Use specific column names instead of SELECT * to improve performance</li>
-                <li>Create appropriate indexes for frequently queried columns</li>
-                <li>Use EXPLAIN ANALYZE to understand query execution plans</li>
-                <li>Limit result sets when working with large tables</li>
-                <li>Use prepared statements for parameterized queries</li>
-                <li>Avoid nested subqueries when CTEs or JOINs can be used instead</li>
-              </ul>
+              Be careful with UPDATE and DELETE statements without WHERE clauses as they affect all rows.
+              LumosDB will warn you when executing such potentially destructive queries.
             </AlertDescription>
           </Alert>
-          
-          <div className="mt-6">
-            <h3 className="text-xl font-semibold mb-3">Working with Large Datasets</h3>
-            <p>
-              When working with large datasets in the SQL Editor, consider these techniques to improve 
-              performance and usability:
-            </p>
-            <ul className="list-disc list-inside space-y-2 ml-4 mt-3">
-              <li>
-                <span className="font-medium">Add LIMIT clauses</span> to your queries during development
-              </li>
-              <li>
-                <span className="font-medium">Use data sampling</span> for exploratory analysis
-              </li>
-              <li>
-                <span className="font-medium">Enable pagination</span> in the results view for better navigation
-              </li>
-              <li>
-                <span className="font-medium">Create temporary views</span> for complex intermediate results
-              </li>
-              <li>
-                <span className="font-medium">Schedule long-running queries</span> to execute during off-peak hours
-              </li>
-            </ul>
-          </div>
         </section>
 
         <Separator className="my-6" />
@@ -559,8 +549,8 @@ export default function SQLEditorPage() {
           </Button>
           <Button asChild>
             <Link href="/dashboard/docs/backup-recovery">
-              Next: Backup and Recovery Guide
-              <ChevronRight className="ml-2 h-4 w-4" />
+              Next: Backup & Recovery Guide
+              <ChevronLeft className="ml-2 h-4 w-4 rotate-180" />
             </Link>
           </Button>
         </div>

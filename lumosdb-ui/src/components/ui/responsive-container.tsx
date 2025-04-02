@@ -1,221 +1,175 @@
 "use client"
 
-import * as React from "react"
+import React, { useState, useEffect } from "react"
 import { cn } from "@/lib/utils"
 
-type Breakpoint = "mobile" | "tablet" | "desktop" | "wide"
-
-interface ResponsiveContainerProps extends React.HTMLAttributes<HTMLDivElement> {
-  children: React.ReactNode | ((breakpoint: Breakpoint) => React.ReactNode)
-  mobileBreakpoint?: number
-  tabletBreakpoint?: number
-  desktopBreakpoint?: number
-  mobileClassName?: string
-  tabletClassName?: string
-  desktopClassName?: string
-  wideClassName?: string
+interface ResponsiveContainerProps {
+  className?: string;
+  mobileBreakpoint?: number;
+  tabletBreakpoint?: number;
+  desktopBreakpoint?: number;
+  mobileClassName?: string;
+  tabletClassName?: string;
+  desktopClassName?: string;
+  onBreakpointChange?: (breakpoint: 'mobile' | 'tablet' | 'desktop') => void;
+  children?: React.ReactNode | ((breakpoint: 'mobile' | 'tablet' | 'desktop') => React.ReactNode);
+  [key: string]: any; // To allow other div props
 }
 
-const ResponsiveContainer = React.forwardRef<HTMLDivElement, ResponsiveContainerProps>(
-  (
-    { 
-      className,
-      children, 
-      mobileBreakpoint = 640, 
-      tabletBreakpoint = 768, 
-      desktopBreakpoint = 1024,
-      mobileClassName = "",
-      tabletClassName = "",
-      desktopClassName = "",
-      wideClassName = "",
-      ...props 
-    }, 
-    ref
-  ) => {
-    const [currentBreakpoint, setCurrentBreakpoint] = React.useState<Breakpoint>("desktop")
-    
-    React.useEffect(() => {
-      const updateBreakpoint = () => {
-        const width = window.innerWidth
-        
-        if (width < mobileBreakpoint) {
-          setCurrentBreakpoint("mobile")
-        } else if (width < tabletBreakpoint) {
-          setCurrentBreakpoint("tablet")
-        } else if (width < desktopBreakpoint) {
-          setCurrentBreakpoint("desktop")
-        } else {
-          setCurrentBreakpoint("wide")
-        }
-      }
-      
-      // Initialize
-      updateBreakpoint()
-      
-      // Add resize listener
-      window.addEventListener('resize', updateBreakpoint)
-      
-      // Cleanup
-      return () => {
-        window.removeEventListener('resize', updateBreakpoint)
-      }
-    }, [mobileBreakpoint, tabletBreakpoint, desktopBreakpoint])
-    
-    const breakpointClassNames = {
-      mobile: mobileClassName,
-      tablet: tabletClassName,
-      desktop: desktopClassName,
-      wide: wideClassName,
-    }
-    
-    return (
-      <div
-        ref={ref}
-        className={cn(
-          "responsive-container",
-          breakpointClassNames[currentBreakpoint],
-          className
-        )}
-        data-breakpoint={currentBreakpoint}
-        {...props}
-      >
-        {typeof children === 'function' 
-          ? children(currentBreakpoint)
-          : children
-        }
-      </div>
-    )
-  }
-)
-
-ResponsiveContainer.displayName = "ResponsiveContainer"
-
-// Specialized components
-const MobileOnly: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [mounted, setMounted] = React.useState(false)
+/**
+ * A responsive container that applies different classes based on the screen size
+ * and provides the current breakpoint to its children.
+ */
+export function ResponsiveContainer({
+  children,
+  mobileBreakpoint = 640,
+  tabletBreakpoint = 1024,
+  desktopBreakpoint = 1280,
+  mobileClassName = '',
+  tabletClassName = '',
+  desktopClassName = '',
+  onBreakpointChange,
+  className,
+  ...props
+}: ResponsiveContainerProps) {
+  const [currentBreakpoint, setCurrentBreakpoint] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
   
-  React.useEffect(() => {
-    setMounted(true)
-    return () => setMounted(false)
-  }, [])
-  
-  if (!mounted) return null
-  
-  return (
-    <div className="md:hidden">
-      {children}
-    </div>
-  )
-}
-
-const TabletOnly: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [mounted, setMounted] = React.useState(false)
-  
-  React.useEffect(() => {
-    setMounted(true)
-    return () => setMounted(false)
-  }, [])
-  
-  if (!mounted) return null
-  
-  return (
-    <div className="hidden md:block lg:hidden">
-      {children}
-    </div>
-  )
-}
-
-const DesktopOnly: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [mounted, setMounted] = React.useState(false)
-  
-  React.useEffect(() => {
-    setMounted(true)
-    return () => setMounted(false)
-  }, [])
-  
-  if (!mounted) return null
-  
-  return (
-    <div className="hidden lg:block">
-      {children}
-    </div>
-  )
-}
-
-const Breakpoint: React.FC<{ 
-  children: React.ReactNode | ((breakpoint: Breakpoint) => React.ReactNode),
-  above?: Breakpoint,
-  below?: Breakpoint,
-  is?: Breakpoint | Breakpoint[],
-}> = ({ 
-  children, 
-  above, 
-  below, 
-  is 
-}) => {
-  const [currentBreakpoint, setCurrentBreakpoint] = React.useState<Breakpoint | null>(null)
-  
-  React.useEffect(() => {
+  useEffect(() => {
+    // Function to update breakpoint based on window width
     const updateBreakpoint = () => {
-      const width = window.innerWidth
+      const width = window.innerWidth;
+      let newBreakpoint: 'mobile' | 'tablet' | 'desktop';
+      
+      if (width < mobileBreakpoint) {
+        newBreakpoint = 'mobile';
+      } else if (width < tabletBreakpoint) {
+        newBreakpoint = 'tablet';
+      } else {
+        newBreakpoint = 'desktop';
+      }
+      
+      if (newBreakpoint !== currentBreakpoint) {
+        setCurrentBreakpoint(newBreakpoint);
+        onBreakpointChange?.(newBreakpoint);
+      }
+    };
+    
+    // Initial update
+    updateBreakpoint();
+    
+    // Listen for window resize events
+    window.addEventListener('resize', updateBreakpoint);
+    
+    // Clean up event listener
+    return () => {
+      window.removeEventListener('resize', updateBreakpoint);
+    };
+  }, [currentBreakpoint, mobileBreakpoint, tabletBreakpoint, desktopBreakpoint, onBreakpointChange]);
+  
+  // Determine which class to apply based on the current breakpoint
+  const responsiveClassName = 
+    currentBreakpoint === 'mobile' ? mobileClassName :
+    currentBreakpoint === 'tablet' ? tabletClassName :
+    desktopClassName;
+  
+  return (
+    <div 
+      className={cn(className, responsiveClassName)} 
+      data-breakpoint={currentBreakpoint}
+      {...props}
+    >
+      {typeof children === 'function' 
+        ? (children as (breakpoint: 'mobile' | 'tablet' | 'desktop') => React.ReactNode)(currentBreakpoint) 
+        : children}
+    </div>
+  );
+}
+
+/**
+ * A component that only renders its children on specific breakpoints
+ */
+export function Breakpoint({
+  children,
+  show = ['mobile', 'tablet', 'desktop'],
+}: {
+  children: React.ReactNode;
+  show?: Array<'mobile' | 'tablet' | 'desktop'>;
+}) {
+  const [currentBreakpoint, setCurrentBreakpoint] = useState<'mobile' | 'tablet' | 'desktop'>('desktop');
+  const [isMounted, setIsMounted] = useState(false);
+  
+  useEffect(() => {
+    setIsMounted(true);
+    
+    // Function to update breakpoint based on window width
+    const updateBreakpoint = () => {
+      const width = window.innerWidth;
       
       if (width < 640) {
-        setCurrentBreakpoint("mobile")
-      } else if (width < 768) {
-        setCurrentBreakpoint("tablet")
+        setCurrentBreakpoint('mobile');
       } else if (width < 1024) {
-        setCurrentBreakpoint("desktop")
+        setCurrentBreakpoint('tablet');
       } else {
-        setCurrentBreakpoint("wide")
+        setCurrentBreakpoint('desktop');
       }
-    }
+    };
     
-    updateBreakpoint()
-    window.addEventListener('resize', updateBreakpoint)
+    // Initial update
+    updateBreakpoint();
     
+    // Listen for window resize events
+    window.addEventListener('resize', updateBreakpoint);
+    
+    // Clean up event listener
     return () => {
-      window.removeEventListener('resize', updateBreakpoint)
-    }
-  }, [])
+      window.removeEventListener('resize', updateBreakpoint);
+    };
+  }, []);
   
-  if (!currentBreakpoint) return null
-  
-  const breakpointOrder: Record<Breakpoint, number> = {
-    mobile: 0,
-    tablet: 1,
-    desktop: 2,
-    wide: 3
+  // Don't render anything during SSR to avoid hydration mismatches
+  if (!isMounted) {
+    return null;
   }
   
-  let shouldRender = true
-  
-  if (above) {
-    shouldRender = breakpointOrder[currentBreakpoint] > breakpointOrder[above]
+  // Only render if the current breakpoint is in the show array
+  if (!show.includes(currentBreakpoint)) {
+    return null;
   }
   
-  if (below && shouldRender) {
-    shouldRender = breakpointOrder[currentBreakpoint] < breakpointOrder[below]
-  }
-  
-  if (is && shouldRender) {
-    if (Array.isArray(is)) {
-      shouldRender = is.includes(currentBreakpoint)
-    } else {
-      shouldRender = currentBreakpoint === is
-    }
-  }
-  
-  if (!shouldRender) return null
-  
-  return typeof children === 'function' 
-    ? <>{children(currentBreakpoint)}</>
-    : <>{children}</>
+  return <>{children}</>;
 }
 
-export { 
-  ResponsiveContainer, 
-  MobileOnly, 
-  TabletOnly, 
-  DesktopOnly,
-  Breakpoint
+/**
+ * A mobile-only component that only renders on mobile screens
+ */
+export function MobileOnly({ children }: { children: React.ReactNode }) {
+  return <Breakpoint show={['mobile']}>{children}</Breakpoint>;
+}
+
+/**
+ * A tablet-only component that only renders on tablet screens
+ */
+export function TabletOnly({ children }: { children: React.ReactNode }) {
+  return <Breakpoint show={['tablet']}>{children}</Breakpoint>;
+}
+
+/**
+ * A desktop-only component that only renders on desktop screens
+ */
+export function DesktopOnly({ children }: { children: React.ReactNode }) {
+  return <Breakpoint show={['desktop']}>{children}</Breakpoint>;
+}
+
+/**
+ * A component that renders on mobile and tablet screens
+ */
+export function MobileAndTablet({ children }: { children: React.ReactNode }) {
+  return <Breakpoint show={['mobile', 'tablet']}>{children}</Breakpoint>;
+}
+
+/**
+ * A component that renders on tablet and desktop screens
+ */
+export function TabletAndDesktop({ children }: { children: React.ReactNode }) {
+  return <Breakpoint show={['tablet', 'desktop']}>{children}</Breakpoint>;
 } 

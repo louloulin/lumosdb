@@ -277,7 +277,7 @@ export default function SQLEditorPage() {
       setIsExecuting(false);
     }
   };
-  
+
   const handleLoadSavedQuery = (querySql: string) => {
     setSql(querySql);
     setActiveTab("editor");
@@ -341,7 +341,7 @@ export default function SQLEditorPage() {
       });
     }
   };
-  
+
   return (
     <div className="container mx-auto space-y-6 p-4">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -367,7 +367,7 @@ export default function SQLEditorPage() {
           </Button>
         </div>
       </div>
-      
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="editor">编辑器</TabsTrigger>
@@ -400,28 +400,28 @@ export default function SQLEditorPage() {
                   </div>
                 </div>
                 <Separator />
-              </CardHeader>
+            </CardHeader>
               <CardContent>
                 <div className="border rounded-md">
-                  <Editor
+              <Editor
                     height="300px"
                     language="sql"
-                    value={sql}
-                    onChange={(value) => setSql(value || "")}
-                    theme={editorTheme}
+                value={sql}
+                onChange={(value) => setSql(value || "")}
+                theme={editorTheme}
                     onMount={handleEditorDidMount}
                     beforeMount={configureMonaco}
-                    options={{
-                      minimap: { enabled: false },
+                options={{
+                  minimap: { enabled: false },
                       scrollBeyondLastLine: false,
-                      fontSize: 14,
+                  fontSize: 14,
                       tabSize: 2,
-                      wordWrap: "on",
-                      automaticLayout: true,
-                    }}
-                  />
+                  wordWrap: "on",
+                  automaticLayout: true,
+                }}
+              />
                 </div>
-              </CardContent>
+            </CardContent>
               <CardFooter className="flex justify-between">
                 <div className="flex gap-2">
                   <Button onClick={handleSaveQuery} variant="outline" size="sm">
@@ -432,7 +432,7 @@ export default function SQLEditorPage() {
                     <XCircle className="mr-2 h-4 w-4" />
                     清空
                   </Button>
-                </div>
+                    </div>
                 <Button 
                   onClick={handleExecuteQuery} 
                   disabled={isExecuting}
@@ -500,7 +500,7 @@ export default function SQLEditorPage() {
                                 ))}
                               </tbody>
                             </table>
-                          </div>
+                      </div>
                         </ScrollArea>
                       </div>
                     ) : (
@@ -526,9 +526,9 @@ export default function SQLEditorPage() {
                   )}
                 </CardFooter>
               </Card>
-            )}
-          </div>
-        </TabsContent>
+                    )}
+                  </div>
+                </TabsContent>
         
         <TabsContent value="saved" className="space-y-4">
           <Card>
@@ -602,8 +602,8 @@ export default function SQLEditorPage() {
                         <Copy className="h-4 w-4" />
                         <span className="sr-only">复制</span>
                       </Button>
-                    </div>
-                  </div>
+        </div>
+      </div>
                 ))}
               </div>
             </CardContent>
