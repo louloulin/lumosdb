@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Minimize2, Sparkles, Send, Bot } from "lucide-react";
+import { X, Minimize2, Sparkles, Send, Bot, Maximize2, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,6 +21,7 @@ interface Message {
 
 export function AIAssistantFloating() {
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
@@ -43,6 +44,28 @@ export function AIAssistantFloating() {
   // 切换展开/收起
   const toggleExpanded = () => {
     setIsExpanded(!isExpanded);
+    if (!isExpanded) {
+      setIsFullscreen(false);
+    }
+  };
+  
+  // 切换全屏显示
+  const toggleFullscreen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsFullscreen(!isFullscreen);
+  };
+
+  // 添加清除会话历史方法
+  const clearChatHistory = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setMessages([
+      {
+        id: "welcome-new",
+        role: "assistant",
+        content: "👋 对话已重置。有什么我可以帮到您的？",
+        timestamp: new Date()
+      }
+    ]);
   };
 
   // 发送消息
@@ -131,50 +154,75 @@ ${result.explanation}
     <div 
       className="fixed z-50"
       style={{ 
-        right: '20px', 
-        bottom: '20px',
+        right: isFullscreen ? '0' : '20px', 
+        bottom: isFullscreen ? '0' : '20px',
+        left: isFullscreen ? '0' : 'auto',
+        top: isFullscreen ? '0' : 'auto',
         transition: 'all 0.3s ease'
       }}
     >
-      <Card className="w-[350px] h-[450px] flex flex-col overflow-hidden shadow-xl border">
-        <CardHeader className="border-b px-4 py-2 flex flex-row items-center justify-between space-y-0">
-          <CardTitle className="text-lg font-medium flex items-center">
-            <Sparkles className="text-primary mr-2 h-4 w-4" />
+      <Card className={`flex flex-col overflow-hidden shadow-xl border ${
+        isFullscreen ? 'w-full h-screen rounded-none' : 'w-[350px] h-[450px]'
+      }`}>
+        <CardHeader className={`border-b px-4 flex flex-row items-center justify-between space-y-0 ${
+          isFullscreen ? 'py-3' : 'py-2'
+        }`}>
+          <CardTitle className={`font-medium flex items-center ${
+            isFullscreen ? 'text-xl' : 'text-lg'
+          }`}>
+            <Sparkles className={`text-primary mr-2 ${
+              isFullscreen ? 'h-5 w-5' : 'h-4 w-4'
+            }`} />
             LumosDB AI 助手
           </CardTitle>
           <div className="flex space-x-1">
+            {isFullscreen && (
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8" 
+                onClick={clearChatHistory}
+                title="清除会话"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
             <Button 
               variant="ghost" 
               size="icon" 
               className="h-8 w-8" 
-              onClick={toggleExpanded}
+              onClick={toggleFullscreen}
+              title={isFullscreen ? "退出全屏" : "全屏显示"}
             >
-              <Minimize2 className="h-4 w-4" />
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
             <Button 
               variant="ghost" 
               size="icon" 
               className="h-8 w-8" 
               onClick={toggleExpanded}
+              title={isFullscreen ? "最小化" : "关闭"}
             >
-              <X className="h-4 w-4" />
+              {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <X className="h-4 w-4" />}
             </Button>
           </div>
         </CardHeader>
         
         <CardContent className="flex-1 p-4 overflow-auto">
-          <ScrollArea className="h-full pr-2">
-            <div className="space-y-4">
+          <ScrollArea className={`h-full ${isFullscreen ? 'pr-4' : 'pr-2'}`}>
+            <div className={`space-y-4 ${isFullscreen ? 'max-w-3xl mx-auto' : ''}`}>
               {messages.map((message) => (
                 <div 
                   key={message.id} 
                   className={cn(
-                    "flex gap-3 p-3 rounded-lg text-sm",
-                    message.role === "user" ? "bg-primary/10 ml-10" : "bg-muted mr-10"
+                    "flex gap-3 p-3 rounded-lg",
+                    message.role === "user" 
+                      ? `bg-primary/10 ${isFullscreen ? 'ml-20' : 'ml-10'}` 
+                      : `bg-muted ${isFullscreen ? 'mr-20' : 'mr-10'}`
                   )}
                 >
                   <Avatar className={cn(
-                    "h-6 w-6",
+                    isFullscreen ? "h-8 w-8" : "h-6 w-6",
                     message.role === "user" ? "bg-primary" : "bg-background border"
                   )}>
                     {message.role === "user" ? "用" : "AI"}
@@ -183,7 +231,7 @@ ${result.explanation}
                     {message.isPending ? (
                       <div className="h-4 w-12 animate-pulse rounded bg-muted-foreground/20" />
                     ) : (
-                      <div className="whitespace-pre-wrap break-words text-xs">
+                      <div className={`whitespace-pre-wrap break-words ${isFullscreen ? 'text-sm' : 'text-xs'}`}>
                         {message.content}
                       </div>
                     )}
@@ -199,10 +247,10 @@ ${result.explanation}
         </CardContent>
         
         <CardFooter className="border-t p-3">
-          <div className="flex gap-2 w-full items-end">
+          <div className={`flex gap-2 w-full items-end ${isFullscreen ? 'max-w-3xl mx-auto' : ''}`}>
             <Textarea 
               placeholder="询问数据分析、SQL生成或使用帮助..." 
-              className="min-h-[40px] max-h-[120px] resize-none flex-1 text-sm p-2"
+              className={`min-h-[40px] max-h-[120px] resize-none flex-1 text-sm p-2 ${isFullscreen ? 'text-base' : ''}`}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               onKeyDown={(e) => {
@@ -214,11 +262,11 @@ ${result.explanation}
             />
             <Button 
               size="icon" 
-              className="h-[40px]" 
+              className={`${isFullscreen ? 'h-[50px] w-[50px]' : 'h-[40px]'}`} 
               disabled={!prompt.trim() || isGenerating}
               onClick={sendMessage}
             >
-              <Send className="h-4 w-4" />
+              <Send className={`${isFullscreen ? 'h-5 w-5' : 'h-4 w-4'}`} />
             </Button>
           </div>
         </CardFooter>
