@@ -1,8 +1,20 @@
 use std::path::Path;
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex};
 use lumos_core::{LumosError};
 use lumos_core::sqlite::connection::RowData;
 use crate::models::db::{TableInfo, ColumnInfo};
+use rusqlite::types::{Value as RusqliteValue};
+
+/// 自定义ValueType枚举，替代lumos_core::sqlite::Value
+#[derive(Debug, Clone)]
+enum ValueType {
+    Null,
+    Integer(i64),
+    Real(f64),
+    Text(String),
+    Blob(Vec<u8>),
+    Boolean(bool),
+}
 
 /// 数据库执行器，负责执行SQL语句和查询
 pub struct DbExecutor {
@@ -118,5 +130,46 @@ impl DbExecutor {
     /// 获取表结构信息（用于REST API）
     pub fn get_table_info(&self, table_name: &str) -> Result<Vec<ColumnInfo>, LumosError> {
         self.get_table_schema(table_name)
+    }
+
+    /// 使用参数执行SQL查询
+    pub fn query_with_params(&self, sql: String, params: Vec<serde_json::Value>) -> Result<Vec<serde_json::Value>, lumos_core::LumosError> {
+        // 将JSON参数转换为字符串参数格式
+        let string_params: Vec<String> = params.iter()
+            .map(|p| match p {
+                serde_json::Value::String(s) => s.clone(),
+                _ => p.to_string()
+            })
+            .collect();
+            
+        // 调用已有的查询方法
+        let rows = self.execute_query(&sql, &string_params)?;
+        
+        // 将RowData转换为JSON
+        let result: Vec<serde_json::Value> = rows.into_iter()
+            .map(|row| {
+                let mut obj = serde_json::Map::new();
+                for (key, value) in row.values {
+                    obj.insert(key.clone(), serde_json::Value::String(value.clone()));
+                }
+                serde_json::Value::Object(obj)
+            })
+            .collect();
+        
+        Ok(result)
+    }
+    
+    /// 使用参数执行SQL语句（INSERT/UPDATE/DELETE等）
+    pub fn execute_with_params(&self, sql: String, params: Vec<serde_json::Value>) -> Result<usize, lumos_core::LumosError> {
+        // 将JSON参数转换为字符串参数格式
+        let string_params: Vec<String> = params.iter()
+            .map(|p| match p {
+                serde_json::Value::String(s) => s.clone(),
+                _ => p.to_string()
+            })
+            .collect();
+            
+        // 调用已有的execute方法
+        self.execute(&sql, &string_params)
     }
 } 

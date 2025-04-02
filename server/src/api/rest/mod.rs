@@ -11,6 +11,7 @@ pub fn configure_routes(cfg: &mut web::ServiceConfig) {
         web::scope("/api")
             .configure(handlers::db_handler::configure)
             .configure(handlers::vector_handlers::configure)
+            .configure(handlers::health_handler::configure)
     );
 }
 

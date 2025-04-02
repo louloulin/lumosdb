@@ -12,12 +12,16 @@ use crate::models::db::{ColumnInfo as ModelColumnInfo};
 #[derive(Debug, Deserialize)]
 pub struct QueryRequest {
     pub sql: String,
+    #[serde(default)]
+    pub params: Vec<serde_json::Value>,
 }
 
 // 执行SQL请求
 #[derive(Debug, Deserialize)]
 pub struct ExecuteRequest {
     pub sql: String,
+    #[serde(default)]
+    pub params: Vec<serde_json::Value>,
 }
 
 // 创建表请求
@@ -65,9 +69,30 @@ async fn query(
     // 启动性能监控
     let _timer = QUERY_MONITOR.start();
     
-    match db_executor.query(query_req.sql.clone()) {
+    log::debug!("Executing query: {} with params: {:?}", query_req.sql, query_req.params);
+    
+    match db_executor.query_with_params(query_req.sql.clone(), query_req.params.clone()) {
         Ok(rows) => {
-            HttpResponse::Ok().json(ApiResponse::success(rows))
+            // 提取列名
+            let columns = if !rows.is_empty() {
+                match &rows[0] {
+                    serde_json::Value::Object(obj) => {
+                        obj.keys().cloned().collect()
+                    },
+                    _ => Vec::new()
+                }
+            } else {
+                Vec::new()
+            };
+            
+            // 创建符合客户端期望的结构
+            let response = serde_json::json!({
+                "columns": columns,
+                "rows": rows,
+                "count": rows.len()
+            });
+            
+            HttpResponse::Ok().json(ApiResponse::success(response))
         },
         Err(e) => {
             log::error!("Database query error: {}", e);
@@ -85,8 +110,16 @@ async fn execute_sql(
     // 启动性能监控
     let _timer = EXECUTE_MONITOR.start();
     
-    match db_executor.execute_sql(execute_req.sql.clone()) {
+    log::debug!("Executing SQL: {} with params: {:?}", execute_req.sql, execute_req.params);
+    
+    // 打印参数类型和值以便调试
+    for (i, param) in execute_req.params.iter().enumerate() {
+        log::debug!("Parameter {}: type={}, value={:?}", i, param.as_str().map_or_else(|| "non-string", |_| "string"), param);
+    }
+    
+    match db_executor.execute_with_params(execute_req.sql.clone(), execute_req.params.clone()) {
         Ok(affected_rows) => {
+            log::debug!("SQL executed successfully, affected rows: {}", affected_rows);
             HttpResponse::Ok().json(ApiResponse::success(serde_json::json!({
                 "affected_rows": affected_rows
             })))

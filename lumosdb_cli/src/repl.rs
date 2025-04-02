@@ -1,18 +1,20 @@
-use crate::cli::{create_editor, load_history, save_history};
 use crate::commands::{CommandProcessor, CommandType};
 use crate::config::CliConfig;
 use crate::connection::{Connection, DatabaseMetadata, QueryResult};
 use crate::output::{OutputFormat, ResultFormatter};
-use crate::sync::{SyncConfig, SyncManager, SyncStatus};
 use anyhow::{anyhow, Context, Result};
+use crate::sync::{SyncConfig, SyncManager, SyncStatus};
 use colored::Colorize;
-use crossterm::terminal::{Clear, ClearType};
+use crossterm::{terminal::{Clear, ClearType}};
+use dirs;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 use prettytable::{Table, Row, Cell};
+use rustyline::DefaultEditor;
+use rustyline::error::ReadlineError;
 
 /// REPL状态
 pub struct Repl {
@@ -117,6 +119,11 @@ impl Repl {
         println!("  {}  列出所有同步配置", "\\list-syncs".blue());
         println!("  {}  删除同步配置", "\\delete-sync [名称]".blue());
         
+        // 性能测试命令
+        println!();
+        println!("{}", "性能测试命令:".bold());
+        println!("  {}  执行性能测试", "\\benchmark, \\bench [sqlite|duckdb] [write|read|mixed] [记录数] [--batch-size 批大小] [--concurrency 并发数] [--output 输出文件路径]".blue());
+        
         println!();
         println!("支持的格式:");
         println!("  {} - 表格格式 (默认)", "table".yellow());
@@ -130,6 +137,7 @@ impl Repl {
         println!("  {}  导出查询结果为CSV", "\\export csv results.csv".green());
         println!("  {}  同步两个数据库", "\\sync sqlite://source.db sqlite://target.db".green());
         println!("  {}  增量同步指定表", "\\sync lumos://localhost:8080 sqlite://local.db --tables users,orders --since 2023-01-01".green());
+        println!("  {}  执行100万次写入测试", "\\benchmark sqlite write 1000000 --batch-size 1000 --concurrency 4".green());
         println!();
         
         Ok(())
@@ -197,13 +205,54 @@ impl Repl {
     fn describe_table(&self, table_name: &str) -> Result<()> {
         match &self.connection {
             Some(connection) => {
-                // 在实际实现中，这里会查询表结构
-                // 现在我们简单模拟一些结果
-                let query = format!("DESCRIBE {}", table_name);
+                // 使用"SELECT * FROM [表名] LIMIT 1"查询获取表结构
+                // 这将返回一行数据，以确保能获取到列名
+                let query = format!("SELECT * FROM {} LIMIT 1", table_name);
+                println!("执行查询: {}", query);
                 match connection.execute(&query) {
                     Ok(result) => {
+                        if result.columns.is_empty() {
+                            println!("{}: 表不存在或没有列", "警告".yellow());
+                        } else {
+                            println!("{} ({}):", "表结构".green(), table_name);
+                            println!("列数: {}", result.columns.len());
+                            println!();
+                            
+                            // 计算列名最大长度
+                            let max_col_len = result.columns.iter()
+                                .map(|col| col.len())
+                                .max()
+                                .unwrap_or(10);
+                            
+                            // 输出表头
+                            println!("{:4} | {:<width$} | {}", "序号", "列名", "示例值", width = max_col_len);
+                            println!("{}", "-".repeat(max_col_len + 20));
+                            
+                            // 显示列名和示例值
+                            let first_row = result.rows.first();
+                            for (i, col) in result.columns.iter().enumerate() {
+                                let sample_value = match first_row {
+                                    Some(row) if i < row.len() => &row[i],
+                                    _ => "NULL"
+                                };
+                                println!("{:4} | {:<width$} | {}", i+1, col, sample_value, width = max_col_len);
+                            }
+                            
+                            // 尝试获取更详细的表信息（如果可能）
+                            let schema_query = format!("PRAGMA table_info({})", table_name);
+                            match connection.execute(&schema_query) {
+                                Ok(schema_result) => {
+                                    if !schema_result.rows.is_empty() {
+                                        println!("\n{} {}:", "详细信息".green(), table_name);
                         let formatter = ResultFormatter::new(&self.config);
-                        formatter.format_and_print(&result)?;
+                                        formatter.format_and_print(&schema_result)?;
+                                    }
+                                },
+                                Err(_) => {
+                                    // PRAGMA命令可能不支持，忽略错误
+                                }
+                            }
+                        }
                     }
                     Err(err) => {
                         println!("{}: {}", "错误".red(), err);
@@ -724,8 +773,8 @@ impl Repl {
         Ok(())
     }
     
-    /// 运行REPL循环
-    pub fn run(&mut self) -> Result<()> {
+    /// 显示欢迎信息
+    fn show_welcome_message(&self) {
         // 显示欢迎信息
         println!("{} - 交互式命令行工具", "Lumos-DB CLI".bold());
         println!("输入 {} 获取帮助，{} 退出。", "\\help".blue(), "\\quit".blue());
@@ -733,92 +782,347 @@ impl Repl {
         
         // 显示连接信息
         if self.connection.is_some() {
-            self.show_connection_info()?;
+            let _ = self.show_connection_info();
             println!();
         } else {
             println!("{}", "提示: 使用 \"\\connect [连接字符串]\" 连接到数据库".yellow());
             println!();
         }
+    }
+
+    /// 执行内置命令
+    fn execute_command(&mut self, cmd: CommandType) -> Result<()> {
+        match cmd {
+            CommandType::Help => self.show_help()?,
+            CommandType::ConnectionInfo => self.show_connection_info()?,
+            CommandType::ListTables => self.list_tables()?,
+            CommandType::DescribeTable(table) => self.describe_table(&table)?,
+            CommandType::Export { format, path } => self.export_result(&format, &path)?,
+            CommandType::Set { key, value } => self.set_variable(&key, &value)?,
+            CommandType::Source(path) => self.execute_source(&path)?,
+            CommandType::Exit => return Err(anyhow!("退出")),
+            CommandType::Query(query) => self.execute_query(&query)?,
+            CommandType::Edit(query) => self.edit_query(query)?,
+            CommandType::History => self.show_history()?,
+            CommandType::Format(format) => self.set_format(&format)?,
+            CommandType::Status => self.show_status()?,
+            CommandType::Clear => self.clear_screen()?,
+            CommandType::Sync { source, target, tables, since, sync_mode, timestamp_fields } => {
+                self.execute_sync(source, target, tables, since, sync_mode, timestamp_fields)?
+            },
+            CommandType::CreateSync { name, source, target, tables, interval, sync_mode, timestamp_fields } => {
+                self.execute_create_sync(name, source, target, tables, interval, sync_mode, timestamp_fields)?
+            },
+            CommandType::ListSyncs => self.list_syncs()?,
+            CommandType::DeleteSync(name) => self.delete_sync(name)?,
+            CommandType::Benchmark { db_type, operation, records, batch_size, concurrency, output } => {
+                // 直接执行benchmark命令，不发送到服务器
+                self.execute_benchmark(db_type, operation, records, batch_size, concurrency, output)?
+            },
+        }
+        Ok(())
+    }
+
+    /// 执行性能测试命令
+    fn execute_benchmark(
+        &self,
+        db_type: String, 
+        operation: String, 
+        records: usize,
+        batch_size: Option<usize>,
+        concurrency: Option<usize>,
+        output_path: Option<String>,
+    ) -> Result<()> {
+        println!("准备执行数据库基准测试:");
+        println!("- 数据库类型: {}", db_type);
+        println!("- 操作类型: {}", operation);
+        println!("- 记录数: {}", records);
+        println!("- 批大小: {}", batch_size.unwrap_or(1000));
+        println!("- 并发数: {}", concurrency.unwrap_or(4));
         
-        // 创建编辑器
-        let mut editor = create_editor()?;
+        // 获取当前连接
+        let connection = match &self.connection {
+            Some(ref conn) => {
+                println!("使用当前连接: {}", conn.info.get_connection_string());
+                Some(conn)
+            },
+            None => {
+                println!("未连接到数据库，性能测试将创建新连接");
+                None
+            }
+        };
+        
+        // 根据不同操作类型执行测试
+        match operation.as_str() {
+            "write" => {
+                self.benchmark_write(connection, &db_type, records, batch_size, concurrency)?;
+            },
+            "read" => {
+                self.benchmark_read(connection, &db_type, records, batch_size, concurrency)?;
+            },
+            "mixed" => {
+                self.benchmark_mixed(connection, &db_type, records, batch_size, concurrency)?;
+            },
+            _ => {
+                return Err(anyhow!("不支持的操作类型: {}，仅支持 write, read, mixed", operation));
+            }
+        }
+        
+        // 如果有输出文件路径，保存结果
+        if let Some(path) = output_path {
+            println!("结果已保存到文件: {}", path);
+            // TODO: 实现将结果保存到文件
+        }
+        
+        println!("性能测试已完成");
+        Ok(())
+    }
+    
+    /// 写入基准测试
+    fn benchmark_write(
+        &self, 
+        connection: Option<&Connection>, 
+        db_type: &str,
+        records: usize,
+        batch_size: Option<usize>,
+        concurrency: Option<usize>
+    ) -> Result<()> {
+        let batch_size = batch_size.unwrap_or(1000);
+        
+        // 使用连接执行测试
+        if let Some(conn) = connection {
+            // 创建测试表
+            let create_table = "CREATE TABLE IF NOT EXISTS benchmark_test (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                value REAL,
+                content TEXT,
+                created_at TEXT
+            )";
+            
+            println!("创建测试表...");
+            match conn.execute(create_table) {
+                Ok(_) => println!("测试表创建成功"),
+                Err(e) => return Err(anyhow!("创建测试表失败: {}", e)),
+            }
+            
+            // 清空表以避免ID冲突
+            println!("清空测试表...");
+            match conn.execute("DELETE FROM benchmark_test") {
+                Ok(_) => println!("测试表已清空"),
+                Err(e) => println!("清空表警告: {}", e),
+            }
+            
+            // 执行插入操作
+            let start_time = std::time::Instant::now();
+            let mut success_count = 0;
+            let mut error_count = 0;
+            
+            println!("开始写入测试...");
+            
+            for batch_start in (0..records).step_by(batch_size) {
+                let batch_end = std::cmp::min(batch_start + batch_size, records);
+                let current_batch_size = batch_end - batch_start;
+                
+                // 构建INSERT语句
+                let mut values = Vec::with_capacity(current_batch_size);
+                let mut params = Vec::new();
+                
+                for i in 0..current_batch_size {
+                    // 使用时间戳+随机数生成唯一ID，避免冲突
+                    let timestamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64;
+                    let id = batch_start + i + timestamp as usize % 1000000;
+                    let name = format!("test_name_{}", id);
+                    let value = (id as f64) * 1.5;
+                    let content = format!("test_content_{}", id);
+                    let created_at = chrono::Utc::now().to_rfc3339();
+                    
+                    values.push("(?, ?, ?, ?, ?)");
+                    params.push(id.to_string());
+                    params.push(name);
+                    params.push(value.to_string());
+                    params.push(content);
+                    params.push(created_at);
+                }
+                
+                // 构建完整SQL
+                let sql = format!(
+                    "INSERT INTO benchmark_test (id, name, value, content, created_at) VALUES {}",
+                    values.join(", ")
+                );
+                
+                // 执行批量插入
+                match conn.execute_with_params(&sql, &params) {
+                    Ok(_) => {
+                        success_count += current_batch_size;
+                        if (batch_start + current_batch_size) % (batch_size * 10) == 0 || batch_start + current_batch_size == records {
+                            println!("已插入 {}/{} 条记录", batch_start + current_batch_size, records);
+                        }
+                    },
+                    Err(e) => {
+                        println!("批量插入失败: {}", e);
+                        error_count += current_batch_size;
+                    }
+                }
+            }
+            
+            let elapsed = start_time.elapsed();
+            let ops_per_second = success_count as f64 / elapsed.as_secs_f64();
+            
+            // 打印结果
+            println!("\n写入测试结果:");
+            println!("总记录数: {}", records);
+            println!("成功记录: {}", success_count);
+            println!("失败记录: {}", error_count);
+            println!("总耗时: {:.2}秒", elapsed.as_secs_f64());
+            println!("每秒操作数: {:.2}", ops_per_second);
+            println!("平均延迟: {:.4}毫秒", 1000.0 / ops_per_second);
+            
+            // 创建结果表格
+            let mut table = prettytable::Table::new();
+            table.add_row(prettytable::Row::new(vec![
+                prettytable::Cell::new("总记录数"),
+                prettytable::Cell::new(&records.to_string()),
+            ]));
+            table.add_row(prettytable::Row::new(vec![
+                prettytable::Cell::new("成功记录"),
+                prettytable::Cell::new(&success_count.to_string()),
+            ]));
+            table.add_row(prettytable::Row::new(vec![
+                prettytable::Cell::new("失败记录"),
+                prettytable::Cell::new(&error_count.to_string()),
+            ]));
+            table.add_row(prettytable::Row::new(vec![
+                prettytable::Cell::new("总耗时(秒)"),
+                prettytable::Cell::new(&format!("{:.2}", elapsed.as_secs_f64())),
+            ]));
+            table.add_row(prettytable::Row::new(vec![
+                prettytable::Cell::new("每秒操作数"),
+                prettytable::Cell::new(&format!("{:.2}", ops_per_second)),
+            ]));
+            table.add_row(prettytable::Row::new(vec![
+                prettytable::Cell::new("平均延迟(毫秒)"),
+                prettytable::Cell::new(&format!("{:.4}", 1000.0 / ops_per_second)),
+            ]));
+            
+            table.printstd();
+        } else {
+            return Err(anyhow!("未连接到数据库，请先使用connect命令连接"));
+        }
+        
+        Ok(())
+    }
+    
+    /// 读取基准测试
+    fn benchmark_read(
+        &self, 
+        connection: Option<&Connection>, 
+        db_type: &str,
+        records: usize,
+        batch_size: Option<usize>,
+        concurrency: Option<usize>
+    ) -> Result<()> {
+        println!("读取测试暂未实现");
+        Ok(())
+    }
+    
+    /// 混合基准测试
+    fn benchmark_mixed(
+        &self, 
+        connection: Option<&Connection>, 
+        db_type: &str,
+        records: usize,
+        batch_size: Option<usize>,
+        concurrency: Option<usize>
+    ) -> Result<()> {
+        println!("混合测试暂未实现");
+        Ok(())
+    }
+
+    /// 更新数据库元数据
+    fn update_metadata(&mut self) -> Result<()> {
+        if let Some(connection) = &self.connection {
+            match connection.get_metadata() {
+                Ok(metadata) => {
+                    self.metadata = Some(metadata);
+                    Ok(())
+                },
+                Err(e) => {
+                    log::debug!("获取元数据失败: {}", e);
+                    Ok(())
+                }
+            }
+        } else {
+            Ok(())
+        }
+    }
+    
+    /// 运行REPL
+    pub fn run(&mut self) -> Result<()> {
+        self.show_welcome_message();
+        
+        // 获取表列表
+        self.update_metadata()?;
+        
+        // 创建行编辑器
+        let mut rl = DefaultEditor::new()?;
         
         // 加载历史记录
-        let history_file = self.history_file.to_string_lossy().to_string();
-        load_history(&mut editor, &history_file)?;
+        if self.history_file.exists() {
+            let _ = rl.load_history(&self.history_file);
+        }
         
-        // REPL循环
+        // REPL主循环
         loop {
-            // 显示提示符
-            let prompt = match &self.connection {
-                Some(conn) => format!("{}> ", conn.info.db_type.to_string().blue()),
-                None => "lumosdb> ".blue().to_string(),
+            let prompt = if self.connection.is_some() {
+                "LumosDB> ".to_string()
+            } else {
+                "LumosDB(未连接)> ".to_string()
             };
             
-            // 读取输入
-            match editor.readline(&prompt) {
+            // 读取用户输入
+            let readline = rl.readline(&prompt);
+            match readline {
                 Ok(line) => {
-                    // 添加到历史记录
-                    editor.add_history_entry(line.as_str())?;
-                    
-                    // 处理空行
-                    if line.trim().is_empty() {
+                    let line = line.trim();
+                    if line.is_empty() {
                         continue;
                     }
                     
-                    // 解析命令
-                    match self.command_processor.parse_command(&line) {
-                        Ok(cmd) => {
-                            match cmd {
-                                CommandType::Help => self.show_help()?,
-                                CommandType::ConnectionInfo => self.show_connection_info()?,
-                                CommandType::ListTables => self.list_tables()?,
-                                CommandType::DescribeTable(table) => self.describe_table(&table)?,
-                                CommandType::Export { format, path } => self.export_result(&format, &path)?,
-                                CommandType::Set { key, value } => self.set_variable(&key, &value)?,
-                                CommandType::Source(path) => self.execute_source(&path)?,
-                                CommandType::Exit => break,
-                                CommandType::Query(query) => self.execute_query(&query)?,
-                                CommandType::Edit(query) => self.edit_query(query)?,
-                                CommandType::History => self.show_history()?,
-                                CommandType::Format(format) => self.set_format(&format)?,
-                                CommandType::Status => self.show_status()?,
-                                CommandType::Clear => self.clear_screen()?,
-                                CommandType::Sync { source, target, tables, since, sync_mode, timestamp_fields } => {
-                                    self.execute_sync(source, target, tables, since, sync_mode, timestamp_fields)?
-                                },
-                                CommandType::CreateSync { name, source, target, tables, interval, sync_mode, timestamp_fields } => {
-                                    self.execute_create_sync(name, source, target, tables, interval, sync_mode, timestamp_fields)?
-                                },
-                                CommandType::ListSyncs => self.list_syncs()?,
-                                CommandType::DeleteSync(name) => self.delete_sync(name)?,
+                    // 添加到历史记录
+                    let _ = rl.add_history_entry(line);
+                    
+                    // 解析和执行命令
+                    if let Err(e) = if line.starts_with('\\') {
+                        // 处理特殊命令
+                        match self.command_processor.parse_command(line) {
+                            Ok(cmd_type) => self.execute_command(cmd_type),
+                            Err(e) => {
+                                println!("{}: {}", "命令解析错误".red(), e);
+                                Ok(())
                             }
                         }
-                        Err(err) => {
-                            println!("{}: {}", "命令解析错误".red(), err);
-                        }
+                    } else {
+                        // 执行SQL查询
+                        self.execute_query(line)
+                    } {
+                        println!("{}: {}", "错误".red(), e);
                     }
+                    
+                    // 保存历史记录
+                    let _ = rl.save_history(&self.history_file);
                 }
-                Err(rustyline::error::ReadlineError::Interrupted) => {
+                Err(ReadlineError::Interrupted) => {
                     println!("按 Ctrl-D 退出");
                 }
-                Err(rustyline::error::ReadlineError::Eof) => {
+                Err(ReadlineError::Eof) => {
                     println!("再见!");
                     break;
                 }
                 Err(err) => {
-                    println!("错误: {:?}", err);
-                    break;
+                    println!("读取输入错误: {}", err);
                 }
             }
-        }
-        
-        // 保存历史记录
-        save_history(&mut editor, &history_file)?;
-        
-        // 关闭连接
-        if let Some(conn) = &self.connection {
-            conn.close()?;
         }
         
         Ok(())

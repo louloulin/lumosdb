@@ -22,6 +22,8 @@ pub mod extensions {
         fn execute_sql(&self, sql: String) -> Result<usize, String>;
         fn get_tables(&self) -> Result<Vec<String>, String>;
         fn get_table_info(&self, table_name: &str) -> Result<Vec<ColumnInfo>, String>;
+        fn query_with_params(&self, sql: String, params: Vec<serde_json::Value>) -> Result<Vec<serde_json::Value>, String>;
+        fn execute_with_params(&self, sql: String, params: Vec<serde_json::Value>) -> Result<usize, String>;
     }
     
     // Implement extension methods for web::Data<Arc<DbExecutor>>
@@ -40,6 +42,14 @@ pub mod extensions {
         
         fn get_table_info(&self, table_name: &str) -> Result<Vec<ColumnInfo>, String> {
             self.get_ref().get_table_info(table_name).map_err(|e| e.to_string())
+        }
+        
+        fn query_with_params(&self, sql: String, params: Vec<serde_json::Value>) -> Result<Vec<serde_json::Value>, String> {
+            self.get_ref().query_with_params(sql, params).map_err(|e| e.to_string())
+        }
+        
+        fn execute_with_params(&self, sql: String, params: Vec<serde_json::Value>) -> Result<usize, String> {
+            self.get_ref().execute_with_params(sql, params).map_err(|e| e.to_string())
         }
     }
 }

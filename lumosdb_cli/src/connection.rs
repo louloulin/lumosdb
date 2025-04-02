@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::time::Duration;
 use reqwest::{blocking::Client, StatusCode};
+use std::collections::HashMap;
 
 /// 数据库类型
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -13,6 +14,8 @@ pub enum DatabaseType {
     DuckDB,
     /// LumosDB服务器
     LumosServer,
+    /// 未知数据库
+    Unknown,
 }
 
 impl fmt::Display for DatabaseType {
@@ -21,6 +24,7 @@ impl fmt::Display for DatabaseType {
             DatabaseType::SQLite => write!(f, "SQLite"),
             DatabaseType::DuckDB => write!(f, "DuckDB"),
             DatabaseType::LumosServer => write!(f, "LumosDB"),
+            DatabaseType::Unknown => write!(f, "Unknown"),
         }
     }
 }
@@ -57,7 +61,7 @@ impl ConnectionInfo {
             "sqlite" => DatabaseType::SQLite,
             "duckdb" => DatabaseType::DuckDB,
             "lumos" => DatabaseType::LumosServer,
-            _ => return Err(anyhow!("Unsupported database type: {}", parts[0])),
+            _ => DatabaseType::Unknown,
         };
 
         // 解析路径和参数
@@ -106,6 +110,7 @@ impl ConnectionInfo {
             DatabaseType::SQLite => "sqlite",
             DatabaseType::DuckDB => "duckdb",
             DatabaseType::LumosServer => "lumos",
+            DatabaseType::Unknown => "unknown",
         };
         
         let mut conn_str = format!("{}://{}", db_type, self.path);
@@ -135,6 +140,24 @@ impl ConnectionInfo {
         }
         
         conn_str
+    }
+
+    /// 获取完整的连接字符串
+    pub fn get_connection_string(&self) -> String {
+        match self.db_type {
+            DatabaseType::LumosServer => {
+                format!("lumos://{}", self.path)
+            },
+            DatabaseType::SQLite => {
+                format!("sqlite://{}", self.path)
+            },
+            DatabaseType::DuckDB => {
+                format!("duckdb://{}", self.path)
+            },
+            DatabaseType::Unknown => {
+                format!("unknown://{}", self.path)
+            }
+        }
     }
 }
 
@@ -202,22 +225,38 @@ impl Connection {
         })
     }
     
-    /// 执行查询
+    /// 执行SQL查询并返回结果
     pub fn execute(&self, query: &str) -> Result<QueryResult> {
         match self.info.db_type {
             DatabaseType::LumosServer => {
-                self.execute_on_server(query)
-            },
-            _ => {
-                // 模拟本地数据库查询
-                // 将来会实现本地SQLite和DuckDB支持
-                self.execute_mock(query)
+                // 远程LumosDB服务器
+                self.execute_on_server(query, &[])
+            }
+            DatabaseType::SQLite | DatabaseType::DuckDB | DatabaseType::Unknown => {
+                // 本地数据库，目前仅支持远程LumosDB服务器
+                // TODO: 实现本地SQLite和DuckDB支持
+                Err(anyhow!("暂不支持本地数据库连接，请使用LumosDB服务器"))
+            }
+        }
+    }
+    
+    /// 使用参数执行SQL查询并返回结果
+    pub fn execute_with_params(&self, query: &str, params: &[String]) -> Result<QueryResult> {
+        match self.info.db_type {
+            DatabaseType::LumosServer => {
+                // 远程LumosDB服务器
+                self.execute_on_server(query, params)
+            }
+            DatabaseType::SQLite | DatabaseType::DuckDB | DatabaseType::Unknown => {
+                // 本地数据库，目前仅支持远程LumosDB服务器
+                // TODO: 实现本地SQLite和DuckDB支持
+                Err(anyhow!("暂不支持本地数据库连接，请使用LumosDB服务器"))
             }
         }
     }
     
     /// 在LumosDB服务器上执行查询
-    fn execute_on_server(&self, query: &str) -> Result<QueryResult> {
+    fn execute_on_server(&self, query: &str, params: &[String]) -> Result<QueryResult> {
         let client = self.client.as_ref()
             .ok_or_else(|| anyhow!("HTTP client not initialized"))?;
         let base_url = self.base_url.as_ref()
@@ -237,11 +276,12 @@ impl Connection {
         // 尝试所有可能的路径
         for url in &url_paths {
             log::debug!("Trying query URL: {}", url);
+            println!("DEBUG: 发送查询 '{}' 到 {}", query, url);
             
             // 构建请求体
             let request_body = serde_json::json!({
                 "sql": query,
-                "params": []
+                "params": params
             });
             
             // 构建API请求
@@ -254,94 +294,109 @@ impl Connection {
             }
             
             // 发送请求并获取响应
-            let _response = match request_builder.send() {
+            let response = match request_builder.send() {
                 Ok(resp) => {
                     // 如果不是404错误，直接处理响应
                     if resp.status() != StatusCode::NOT_FOUND {
                         let execution_time = start.elapsed();
+                        let status = resp.status();
                         
-                        match resp.status() {
+                        match status {
                             StatusCode::OK => {
                                 // 尝试解析查询结果
-                                if let Ok(json) = resp.json::<serde_json::Value>() {
-                                    if let Some(success) = json.get("success").and_then(|v| v.as_bool()) {
-                                        if success {
-                                            // 成功响应
-                                            if let Some(data) = json.get("data").and_then(|v| v.as_array()) {
-                                                // 提取列名
-                                                let mut columns = Vec::new();
-                                                if let Some(first_row) = data.first() {
-                                                    if let Some(obj) = first_row.as_object() {
-                                                        columns = obj.keys().cloned().collect();
+                                match resp.text() {
+                                    Ok(text) => {
+                                        println!("DEBUG: 收到服务器响应: {}", text);
+                                        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                            if let Some(success) = json.get("success").and_then(|v| v.as_bool()) {
+                                                if success {
+                                                    // 成功响应
+                                                    if let Some(data) = json.get("data") {
+                                                        let columns = data.get("columns")
+                                                            .and_then(|c| c.as_array())
+                                                            .map(|arr| arr.iter()
+                                                                .filter_map(|v| v.as_str())
+                                                                .map(|s| s.to_string())
+                                                                .collect::<Vec<String>>())
+                                                            .unwrap_or_default();
+                                                        
+                                                        println!("DEBUG: 列名: {:?}", columns);
+                                                        
+                                                        // 提取数据行
+                                                        let rows = data.get("rows")
+                                                            .and_then(|r| r.as_array())
+                                                            .map(|arr| arr.iter()
+                                                                .filter_map(|row_obj| row_obj.as_object())
+                                                                .map(|row_map| {
+                                                                    columns.iter()
+                                                                        .map(|col| {
+                                                                            let value = row_map.get(col)
+                                                                                .map(|v| match v {
+                                                                                    serde_json::Value::Null => "NULL".to_string(),
+                                                                                    serde_json::Value::String(s) => s.clone(),
+                                                                                    _ => v.to_string()
+                                                                                })
+                                                                                .unwrap_or_else(|| "NULL".to_string());
+                                                                            value
+                                                                        })
+                                                                        .collect::<Vec<String>>()
+                                                                })
+                                                                .collect::<Vec<Vec<String>>>())
+                                                            .unwrap_or_default();
+                                                        
+                                                        println!("DEBUG: 行数: {}", rows.len());
+                                                        println!("DEBUG: 首行数据: {:?}", rows.first());
+                                                        
+                                                        return Ok(QueryResult {
+                                                            columns,
+                                                            rows,
+                                                            execution_time,
+                                                            affected_rows: data.get("count")
+                                                                .and_then(|v| v.as_u64())
+                                                                .unwrap_or(0) as usize,
+                                                        });
                                                     }
+                                                    
+                                                    // 数据为空，可能是非查询操作
+                                                    return Ok(QueryResult {
+                                                        columns: Vec::new(),
+                                                        rows: Vec::new(),
+                                                        execution_time,
+                                                        affected_rows: json.get("data")
+                                                            .and_then(|d| d.get("affected_rows"))
+                                                            .and_then(|v| v.as_u64())
+                                                            .unwrap_or(0) as usize,
+                                                    });
+                                                } else {
+                                                    // 错误响应
+                                                    let error_msg = json.get("error")
+                                                        .and_then(|e| e.get("message"))
+                                                        .and_then(|m| m.as_str())
+                                                        .unwrap_or("Unknown error");
+                                                    
+                                                    last_error = Some(format!("Query failed: {}", error_msg));
                                                 }
-                                                
-                                                // 提取数据行
-                                                let mut rows = Vec::new();
-                                                for row_obj in data {
-                                                    if let Some(row_map) = row_obj.as_object() {
-                                                        let mut row = Vec::new();
-                                                        for column in &columns {
-                                                            let value = if let Some(val) = row_map.get(column) {
-                                                                if val.is_null() {
-                                                                    "NULL".to_string()
-                                                                } else if val.is_string() {
-                                                                    val.as_str().unwrap_or("").to_string()
-                                                                } else {
-                                                                    val.to_string()
-                                                                }
-                                                            } else {
-                                                                "NULL".to_string()
-                                                            };
-                                                            
-                                                            row.push(value);
-                                                        }
-                                                        rows.push(row);
-                                                    }
-                                                }
-                                                
-                                                return Ok(QueryResult {
-                                                    columns,
-                                                    rows: rows.clone(),
-                                                    execution_time,
-                                                    affected_rows: rows.len(),
-                                                });
+                                            } else {
+                                                last_error = Some("Invalid response format".to_string());
                                             }
-                                            
-                                            // 数据为空，可能是非查询操作
-                                            return Ok(QueryResult {
-                                                columns: Vec::new(),
-                                                rows: Vec::new(),
-                                                execution_time,
-                                                affected_rows: json.get("affected_rows")
-                                                    .and_then(|v| v.as_u64())
-                                                    .unwrap_or(0) as usize,
-                                            });
                                         } else {
-                                            // 错误响应
-                                            let error_msg = json.get("error")
-                                                .and_then(|e| e.get("message"))
-                                                .and_then(|m| m.as_str())
-                                                .unwrap_or("Unknown error");
-                                                
-                                            last_error = Some(format!("Query failed: {}", error_msg));
+                                            last_error = Some("Failed to parse JSON response".to_string());
                                         }
-                                    } else {
-                                        last_error = Some("Invalid response format".to_string());
+                                    },
+                                    Err(e) => {
+                                        last_error = Some(format!("Failed to read response text: {}", e));
                                     }
-                                } else {
-                                    last_error = Some("Failed to parse JSON response".to_string());
                                 }
                             },
                             _ => {
                                 // 处理其他错误
-                                let message = match resp.status() {
+                                let message = match status {
                                     StatusCode::UNAUTHORIZED => "Unauthorized. Please check your API key.",
                                     StatusCode::FORBIDDEN => "Access forbidden. Your credentials don't have permission to access this resource.",
                                     StatusCode::SERVICE_UNAVAILABLE => "Server is unavailable. The LumosDB service might be down or restarting.",
                                     _ => "HTTP error occurred",
                                 };
-                                last_error = Some(format!("{}: {}", message, resp.status()));
+                                last_error = Some(format!("{}: {}", message, status));
                             }
                         }
                     }
@@ -365,34 +420,6 @@ impl Connection {
         Err(anyhow!(last_error.unwrap_or_else(|| "Failed to connect to server".to_string())))
     }
     
-    /// 模拟查询执行（用于本地数据库）
-    fn execute_mock(&self, query: &str) -> Result<QueryResult> {
-        // 模拟查询执行
-        log::debug!("执行查询: {}", query);
-        
-        // 简单模拟一些查询结果
-        let mut result = QueryResult {
-            columns: vec!["id".to_string(), "name".to_string(), "value".to_string()],
-            rows: Vec::new(),
-            execution_time: Duration::from_millis(100),
-            affected_rows: 0,
-        };
-        
-        if query.to_lowercase().contains("select") {
-            result.rows = vec![
-                vec!["1".to_string(), "item1".to_string(), "100".to_string()],
-                vec!["2".to_string(), "item2".to_string(), "200".to_string()],
-                vec!["3".to_string(), "item3".to_string(), "300".to_string()],
-            ];
-        } else if query.to_lowercase().contains("insert") || 
-                  query.to_lowercase().contains("update") || 
-                  query.to_lowercase().contains("delete") {
-            result.affected_rows = 1;
-        }
-        
-        Ok(result)
-    }
-    
     /// 获取元数据
     pub fn get_metadata(&self) -> Result<DatabaseMetadata> {
         match self.info.db_type {
@@ -407,6 +434,7 @@ impl Connection {
                         DatabaseType::SQLite => "3.40.0",
                         DatabaseType::DuckDB => "0.8.0",
                         DatabaseType::LumosServer => "0.1.0",
+                        DatabaseType::Unknown => "unknown",
                     }.to_string(),
                     tables: vec![
                         "users".to_string(),

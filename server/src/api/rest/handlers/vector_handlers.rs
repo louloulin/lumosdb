@@ -31,7 +31,8 @@ pub fn configure(cfg: &mut web::ServiceConfig) {
             .route("/collections", web::post().to(create_collection))
             .route("/collections/{name}", web::get().to(get_collection))
             .route("/collections/{name}", web::delete().to(delete_collection))
-            .route("/collections/{name}/embeddings", web::post().to(add_embeddings))
+            .route("/collections/{name}/vectors", web::post().to(add_embeddings))
+            .route("/collections/{name}/vectors/batch", web::post().to(add_embeddings_batch))
             .route("/collections/{name}/search", web::post().to(search_similar))
             .route("/collections/{name}/index/{index_type}", web::post().to(create_index))
             .route("/collections/{name}/index", web::delete().to(delete_index))
@@ -316,4 +317,14 @@ pub async fn delete_index(
             ))
         }
     }
+}
+
+/// 批量添加嵌入向量
+pub async fn add_embeddings_batch(
+    path: web::Path<String>,
+    add_req: web::Json<AddEmbeddingsRequest>,
+    vector_executor: web::Data<Arc<VectorExecutor>>,
+) -> impl Responder {
+    // 调用现有的add_embeddings函数处理批量请求
+    add_embeddings(path, add_req, vector_executor).await
 } 

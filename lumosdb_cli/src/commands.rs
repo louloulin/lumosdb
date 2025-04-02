@@ -57,6 +57,21 @@ pub enum CommandType {
     ListSyncs,
     /// 删除同步配置
     DeleteSync(String),
+    /// 性能测试命令
+    Benchmark {
+        /// 数据库类型 (sqlite, duckdb)
+        db_type: String,
+        /// 操作类型 (write, read, mixed)
+        operation: String,
+        /// 记录数量
+        records: usize,
+        /// 每批次记录数
+        batch_size: Option<usize>,
+        /// 并发数
+        concurrency: Option<usize>,
+        /// 输出结果文件路径
+        output: Option<String>,
+    },
 }
 
 /// 命令处理器
@@ -202,11 +217,11 @@ impl CommandProcessor {
                                     timestamp_fields = Some(parts[i + 1].split(',').map(|s| s.to_string()).collect());
                                     i += 2;
                                 } else {
-                                    return Err(anyhow!("--timestamp-fields 参数后缺少字段名"));
+                                    return Err(anyhow!("--timestamp-fields 参数后缺少字段列表"));
                                 }
                             },
                             _ => {
-                                i += 1;
+                                return Err(anyhow!("未知参数: {}", parts[i]));
                             }
                         }
                     }
@@ -215,9 +230,90 @@ impl CommandProcessor {
                         source, 
                         target, 
                         tables, 
-                        since,
-                        sync_mode,
-                        timestamp_fields
+                        since, 
+                        sync_mode, 
+                        timestamp_fields 
+                    })
+                },
+                "\\benchmark" | "\\bench" => {
+                    let parts: Vec<&str> = args.split_whitespace().collect();
+                    if parts.len() < 3 {
+                        return Err(anyhow!("用法: \\benchmark [sqlite|duckdb|lumos] [write|read|mixed] [记录数] [--batch-size 批大小] [--concurrency 并发数] [--output 输出文件路径]"));
+                    }
+                    
+                    let db_type = parts[0].to_string();
+                    // 检查数据库类型
+                    if db_type != "sqlite" && db_type != "duckdb" && db_type != "lumos" {
+                        return Err(anyhow!("不支持的数据库类型: {}，支持的类型有: sqlite, duckdb, lumos", db_type));
+                    }
+                    
+                    let operation = parts[1].to_string();
+                    // 检查操作类型
+                    if operation != "write" && operation != "read" && operation != "mixed" {
+                        return Err(anyhow!("不支持的操作类型: {}，支持的类型有: write, read, mixed", operation));
+                    }
+                    
+                    // 解析记录数
+                    let records = match parts[2].parse::<usize>() {
+                        Ok(num) => num,
+                        Err(_) => return Err(anyhow!("记录数必须是一个正整数: {}", parts[2])),
+                    };
+                    
+                    // 解析可选参数
+                    let mut batch_size = None;
+                    let mut concurrency = None;
+                    let mut output = None;
+                    
+                    let mut i = 3;
+                    while i < parts.len() {
+                        match parts[i] {
+                            "--batch-size" => {
+                                if i + 1 < parts.len() {
+                                    match parts[i + 1].parse::<usize>() {
+                                        Ok(size) => {
+                                            batch_size = Some(size);
+                                            i += 2;
+                                        },
+                                        Err(_) => return Err(anyhow!("批大小必须是一个正整数: {}", parts[i + 1])),
+                                    }
+                                } else {
+                                    return Err(anyhow!("--batch-size 参数后缺少值"));
+                                }
+                            },
+                            "--concurrency" => {
+                                if i + 1 < parts.len() {
+                                    match parts[i + 1].parse::<usize>() {
+                                        Ok(count) => {
+                                            concurrency = Some(count);
+                                            i += 2;
+                                        },
+                                        Err(_) => return Err(anyhow!("并发数必须是一个正整数: {}", parts[i + 1])),
+                                    }
+                                } else {
+                                    return Err(anyhow!("--concurrency 参数后缺少值"));
+                                }
+                            },
+                            "--output" => {
+                                if i + 1 < parts.len() {
+                                    output = Some(parts[i + 1].to_string());
+                                    i += 2;
+                                } else {
+                                    return Err(anyhow!("--output 参数后缺少文件路径"));
+                                }
+                            },
+                            _ => {
+                                return Err(anyhow!("未知参数: {}", parts[i]));
+                            }
+                        }
+                    }
+                    
+                    Ok(CommandType::Benchmark { 
+                        db_type, 
+                        operation, 
+                        records, 
+                        batch_size, 
+                        concurrency, 
+                        output 
                     })
                 },
                 "\\create-sync" => {
@@ -300,8 +396,8 @@ impl CommandProcessor {
                 _ => Err(anyhow!("未知命令: {}", cmd)),
             }
         } else {
-            // 否则，将其视为SQL查询
-            Ok(CommandType::Query(input))
+            // 如果不是特殊命令，则作为普通SQL查询处理
+            Ok(CommandType::Query(input.to_string()))
         }
     }
     
