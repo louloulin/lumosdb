@@ -158,7 +158,7 @@ function generateSampleDashboards(): Dashboard[] {
       isPublic: true,
       createdAt: Date.now() - 3600000 * 24 * 7,
       updatedAt: Date.now() - 3600000 * 24,
-      widgets: [
+    widgets: [
         {
           id: '1-1',
           type: 'bar',
@@ -220,7 +220,7 @@ function generateSampleDashboards(): Dashboard[] {
       isPublic: false,
       createdAt: Date.now() - 3600000 * 24 * 14,
       updatedAt: Date.now() - 3600000 * 24 * 3,
-      widgets: [
+    widgets: [
         {
           id: '2-1',
           type: 'area',
@@ -432,7 +432,7 @@ export default function AnalyticsDashboardPage() {
         );
       
       case 'line':
-        return (
+  return (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -556,7 +556,7 @@ export default function AnalyticsDashboardPage() {
                   <Button onClick={saveDashboard} disabled={isLoading}>
                     {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                     保存仪表盘
-                  </Button>
+                    </Button>
                 ) : (
                   <>
                     <Button variant="outline" onClick={shareDashboard}>
@@ -575,7 +575,7 @@ export default function AnalyticsDashboardPage() {
               <Plus className="mr-2 h-4 w-4" />
               新建仪表盘
             </Button>
-          </div>
+              </div>
         }
       />
       
@@ -598,7 +598,7 @@ export default function AnalyticsDashboardPage() {
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-xl">{dashboard.name}</CardTitle>
                     {dashboard.isPublic && <Badge variant="outline">已共享</Badge>}
-                  </div>
+            </div>
                   <CardDescription>{dashboard.description}</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -620,9 +620,9 @@ export default function AnalyticsDashboardPage() {
                       <Trash2 className="h-4 w-4 text-muted-foreground" />
                     </Button>
                     
-                    <Button 
+                      <Button 
                       variant="ghost" 
-                      size="sm"
+                        size="sm" 
                       onClick={(e) => {
                         e.stopPropagation();
                         const newDashboard = {
@@ -640,13 +640,13 @@ export default function AnalyticsDashboardPage() {
                     </Button>
                   </div>
                 </CardFooter>
-              </Card>
+                      </Card>
             ))}
           </div>
           
           {/* 选中的仪表盘 */}
           {selectedDashboard && (
-            <div className="space-y-4">
+              <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <div>
                   <h2 className="text-2xl font-bold">{selectedDashboard.name}</h2>
@@ -678,25 +678,25 @@ export default function AnalyticsDashboardPage() {
                             value={widgetTitle}
                             onChange={(e) => setWidgetTitle(e.target.value)}
                           />
-                        </div>
-                        
+                </div>
+                
                         <div className="grid gap-2">
                           <Label htmlFor="type">图表类型</Label>
                           <Select value={newWidgetType} onValueChange={(v) => setNewWidgetType(v as WidgetType)}>
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
                               <SelectItem value="bar">柱状图</SelectItem>
                               <SelectItem value="line">折线图</SelectItem>
                               <SelectItem value="pie">饼图</SelectItem>
                               <SelectItem value="area">面积图</SelectItem>
                               <SelectItem value="stat">数字统计</SelectItem>
                               <SelectItem value="table">表格</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        
+                    </SelectContent>
+                  </Select>
+                </div>
+                
                         <div className="grid gap-2">
                           <Label htmlFor="sql">SQL查询</Label>
                           <Textarea
@@ -799,7 +799,7 @@ export default function AnalyticsDashboardPage() {
                           </DialogContent>
                         </Dialog>
                       )}
-                    </div>
+                </div>
                   </Card>
                 )}
               </div>
@@ -817,7 +817,7 @@ export default function AnalyticsDashboardPage() {
                 <Button onClick={createDashboard}>
                   <Plus className="mr-2 h-4 w-4" />
                   新建仪表盘
-                </Button>
+              </Button>
               </div>
             </Card>
           )}
@@ -837,9 +837,9 @@ export default function AnalyticsDashboardPage() {
                     <ExternalLink className="mr-2 h-4 w-4" />
                     访问示例仪表盘
                   </a>
-                </Button>
-              </div>
+              </Button>
             </div>
+          </div>
           </Card>
         </TabsContent>
       </Tabs>

@@ -264,7 +264,7 @@ Would you like a more detailed analysis on any of these points?`
             Schema Helper
           </TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="chat" className="space-y-4">
           <Card className="border-none shadow-none">
             <CardContent className="p-0">
@@ -427,7 +427,7 @@ Would you like a more detailed analysis on any of these points?`
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <Textarea
+              <Textarea
                   placeholder="E.g., Find all users who haven't logged in for the past 30 days"
                   className="min-h-[120px] resize-y"
                   value={prompt}
@@ -466,7 +466,7 @@ Would you like a more detailed analysis on any of these points?`
               <Button variant="outline" onClick={() => setPrompt("")}>
                 Clear
               </Button>
-              <Button 
+              <Button
                 onClick={generateSQL} 
                 disabled={!prompt.trim() || isGenerating}
               >
@@ -492,7 +492,7 @@ Would you like a more detailed analysis on any of these points?`
                   <div className="relative">
                     <pre className="p-4 rounded-md bg-muted overflow-x-auto text-sm">
                       <code>{currentQuery.sql}</code>
-                    </pre>
+                  </pre>
                     <Button 
                       size="icon"
                       variant="ghost"
@@ -635,7 +635,7 @@ Would you like a more detailed analysis on any of these points?`
             />
           </div>
         </TabsContent>
-        
+
         <TabsContent value="schema-helper" className="space-y-4">
           <Card>
             <CardHeader>
@@ -644,7 +644,7 @@ Would you like a more detailed analysis on any of these points?`
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                <Textarea
+              <Textarea
                   placeholder="描述你的数据库结构需求，例如：设计一个电商平台的数据库结构"
                   className="min-h-[120px] resize-y"
                   value={prompt}
@@ -683,7 +683,7 @@ Would you like a more detailed analysis on any of these points?`
               <Button variant="outline" onClick={() => setPrompt("")}>
                 清除
               </Button>
-              <Button 
+              <Button
                 onClick={generateSQL} 
                 disabled={!prompt.trim() || isGenerating}
               >
@@ -696,13 +696,13 @@ Would you like a more detailed analysis on any of these points?`
                 }
               </Button>
             </CardFooter>
-          </Card>
+                </Card>
 
-          <Card>
-            <CardHeader>
+                <Card>
+                  <CardHeader>
               <CardTitle className="text-sm font-medium">数据库结构建议</CardTitle>
               <CardDescription>电商平台数据库设计</CardDescription>
-            </CardHeader>
+                  </CardHeader>
             <CardContent className="space-y-4">
               <div className="relative">
                 <pre className="p-4 rounded-md bg-muted overflow-x-auto text-sm">
@@ -786,7 +786,7 @@ CREATE INDEX idx_orders_user ON orders(user_id);`)
                 >
                   <Copy className="h-4 w-4" />
                 </Button>
-              </div>
+                    </div>
               <div>
                 <h4 className="text-sm font-medium mb-2">设计说明</h4>
                 <p className="text-sm text-muted-foreground">

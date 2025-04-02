@@ -39,6 +39,23 @@ const nextConfig = {
       },
     },
   },
+  // 为Mastra配置服务器外部包
+  serverExternalPackages: ["@mastra/*"],
+  
+  // 处理客户端缺少的Node.js模块
+  webpack: (config, { isServer }) => {
+    if (!isServer) {
+      // 在客户端构建中提供空模块
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        "worker_threads": false,
+        "fs": false,
+        "path": false,
+        "os": false,
+      }
+    }
+    return config
+  },
 }
 
 module.exports = withPWA(nextConfig)

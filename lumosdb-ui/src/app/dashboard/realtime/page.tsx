@@ -40,13 +40,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
+import { 
   Activity,
   AlertCircle,
   CheckCircle2,
-  Database,
-  Layers,
-  PlusCircle,
+  Database, 
+  Layers, 
+  PlusCircle, 
   Trash2,
   XCircle
 } from "lucide-react"
@@ -105,7 +105,7 @@ export default function RealtimePage() {
         return <Badge className="bg-gray-500">未知状态</Badge>;
     }
   };
-  
+
   return (
     <div className="container mx-auto p-6">
       <PageHeader 
@@ -117,12 +117,12 @@ export default function RealtimePage() {
             {connectionState === ConnectionState.CLOSED ? (
               <Button onClick={connect} variant="outline">
                 <Activity className="h-4 w-4 mr-2" /> 连接
-              </Button>
-            ) : (
+            </Button>
+          ) : (
               <Button onClick={disconnect} variant="outline">
                 <XCircle className="h-4 w-4 mr-2" /> 断开
-              </Button>
-            )}
+            </Button>
+          )}
           </div>
         }
       />
@@ -218,13 +218,13 @@ export default function RealtimePage() {
                     <Select name="table" required>
                       <SelectTrigger>
                         <SelectValue placeholder="选择要监控的表" />
-                      </SelectTrigger>
-                      <SelectContent>
+                    </SelectTrigger>
+                    <SelectContent>
                         {tables.map(table => (
                           <SelectItem key={table} value={table}>{table}</SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
+                    </SelectContent>
+                  </Select>
                   </div>
                   <Button type="submit">添加表订阅</Button>
                 </form>
@@ -255,13 +255,13 @@ export default function RealtimePage() {
                     <Select name="collection" required>
                       <SelectTrigger>
                         <SelectValue placeholder="选择要监控的集合" />
-                      </SelectTrigger>
-                      <SelectContent>
+                    </SelectTrigger>
+                    <SelectContent>
                         {collections.map(collection => (
                           <SelectItem key={collection} value={collection}>{collection}</SelectItem>
                         ))}
-                      </SelectContent>
-                    </Select>
+                    </SelectContent>
+                  </Select>
                   </div>
                   <Button type="submit">添加集合订阅</Button>
                 </form>
@@ -280,9 +280,9 @@ export default function RealtimePage() {
                   <h4 className="text-sm font-medium">系统事件</h4>
                   <p className="text-sm text-gray-500">接收有关系统状态和性能的通知</p>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() => {
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
                     // Check if system events subscription already exists
                     const hasSystemSub = subscriptions.some(
                       sub => sub.type === SubscriptionType.SYSTEM_EVENTS
@@ -298,7 +298,7 @@ export default function RealtimePage() {
                   }}
                 >
                   添加系统订阅
-                </Button>
+                  </Button>
               </div>
             </CardContent>
           </Card>
@@ -334,15 +334,15 @@ export default function RealtimePage() {
                   <div className="flex items-center space-x-2">
                     <Switch id="reconnect" defaultChecked />
                     <Label htmlFor="reconnect">断开连接时自动重连</Label>
-                  </div>
-                </div>
+                        </div>
+                      </div>
                 
                 <div className="space-y-2">
                   <Label htmlFor="notification">通知设置</Label>
                   <div className="flex items-center space-x-2">
                     <Switch id="notification" defaultChecked />
                     <Label htmlFor="notification">接收数据变更通知</Label>
-                  </div>
+                    </div>
                 </div>
                 
                 <div className="space-y-2">
@@ -355,7 +355,7 @@ export default function RealtimePage() {
               </form>
             </CardContent>
           </Card>
-          
+        
           <Card>
             <CardHeader>
               <CardTitle>连接状态</CardTitle>
@@ -385,8 +385,8 @@ export default function RealtimePage() {
                 <div className="flex space-x-2">
                   <Button variant="outline" onClick={connect}>测试连接</Button>
                   <Button variant="outline" onClick={disconnect}>断开连接</Button>
-                </div>
-              </div>
+                      </div>
+                      </div>
             </CardContent>
           </Card>
         </TabsContent>
