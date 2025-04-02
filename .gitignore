@@ -83,4 +83,8 @@ build/
 
 # Generated files
 *.pb.go
-*.mock.go 
+*.mock.go
+
+# TypeScript client dependencies
+/clients/ts/node_modules/
+/clients/ts/dist/ 
