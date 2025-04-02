@@ -12,7 +12,8 @@
     "noData": "暂无数据",
     "confirm": "确认",
     "success": "操作成功",
-    "error": "操作失败"
+    "error": "操作失败",
+    "changeLanguage": "切换语言"
   },
   "nav": {
     "dashboard": "控制台",
@@ -141,6 +142,15 @@
     "contributeTranslation": "贡献翻译",
     "translateMissing": "翻译缺失项",
     "defaultLanguage": "设为默认语言",
-    "currentLanguage": "当前语言"
+    "currentLanguage": "当前语言",
+    "searchLanguage": "搜索语言",
+    "noLanguagesFound": "未找到匹配的语言",
+    "info": "帮助说明",
+    "languageSettings": "语言设置",
+    "languageSettingsInfo": "选择您的首选语言，更改将在页面刷新后生效。",
+    "defaultLanguage": "默认语言",
+    "defaultLanguageInfo": "如果未选择语言，系统将会根据您的浏览器设置自动选择。",
+    "translationContribution": "翻译贡献",
+    "translationContributionInfo": "如果您发现翻译有误或想贡献新的翻译，请联系我们。"
   }
 } 

@@ -4,7 +4,7 @@ import { useState } from "react"
 import { format } from "date-fns"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { ResponsiveContainer } from "@/components/ui/responsive-container"
+import { DocWrapper } from "@/components/doc-wrapper"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -195,7 +195,7 @@ export default function BackupPage() {
   };
   
   return (
-    <ResponsiveContainer className="space-y-4 p-4 pt-6">
+    <DocWrapper className="space-y-4 p-4 pt-6">
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Backup & Recovery</h2>
       </div>
@@ -654,6 +654,6 @@ export default function BackupPage() {
           </Card>
         </TabsContent>
       </Tabs>
-    </ResponsiveContainer>
+    </DocWrapper>
   )
 } 

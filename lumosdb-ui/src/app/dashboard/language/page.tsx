@@ -9,7 +9,9 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/use-toast";
-import { Globe, Check, RefreshCw, ExternalLink } from "lucide-react";
+import { Globe, Check, RefreshCw, ExternalLink, Languages, Search } from "lucide-react";
+import { DocWrapper } from "@/components/doc-wrapper";
+import { Input } from "@/components/ui/input";
 
 export default function LanguagePage() {
   const t = useTranslations("language");
@@ -18,6 +20,7 @@ export default function LanguagePage() {
   const { change } = useChangeLocale();
   const supportedLocales = useSupportedLocales();
   const [selectedLocale, setSelectedLocale] = useState(currentLocale);
+  const [searchQuery, setSearchQuery] = useState("");
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -38,11 +41,16 @@ export default function LanguagePage() {
     setSelectedLocale(currentLocale);
   };
 
+  // 过滤语言列表
+  const filteredLocales = supportedLocales.filter((locale) => 
+    localeNames[locale].toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   // 防止 SSR 不匹配
   if (!mounted) return null;
 
   return (
-    <div className="container py-6">
+    <DocWrapper>
       <div className="mb-6">
         <h1 className="text-3xl font-bold">{t("title")}</h1>
         <p className="text-muted-foreground mt-2">{t("subtitle")}</p>
@@ -59,6 +67,17 @@ export default function LanguagePage() {
               <CardDescription>
                 {t("currentLanguage")}: {localeNames[currentLocale]}
               </CardDescription>
+              <div className="mt-2">
+                <div className="relative">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder={t("searchLanguage")}
+                    className="pl-8"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               <RadioGroup
@@ -66,27 +85,33 @@ export default function LanguagePage() {
                 onValueChange={(value: string) => setSelectedLocale(value as any)}
                 className="space-y-3"
               >
-                {supportedLocales.map((locale) => (
-                  <div
-                    key={locale}
-                    className="flex items-center justify-between space-x-2 rounded-md border p-4"
-                  >
-                    <div className="flex items-center space-x-2">
-                      <RadioGroupItem value={locale} id={locale} />
-                      <Label
-                        htmlFor={locale}
-                        className="text-base font-medium cursor-pointer"
-                      >
-                        {localeNames[locale]}
-                      </Label>
+                {filteredLocales.length > 0 ? (
+                  filteredLocales.map((locale) => (
+                    <div
+                      key={locale}
+                      className="flex items-center justify-between space-x-2 rounded-md border p-4"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <RadioGroupItem value={locale} id={locale} />
+                        <Label
+                          htmlFor={locale}
+                          className="text-base font-medium cursor-pointer"
+                        >
+                          {localeNames[locale]}
+                        </Label>
+                      </div>
+                      {currentLocale === locale && (
+                        <span className="text-xs text-muted-foreground px-2 py-1 rounded-md bg-muted">
+                          {t("currentLanguage")}
+                        </span>
+                      )}
                     </div>
-                    {currentLocale === locale && (
-                      <span className="text-xs text-muted-foreground px-2 py-1 rounded-md bg-muted">
-                        {t("currentLanguage")}
-                      </span>
-                    )}
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    {t("noLanguagesFound")}
                   </div>
-                ))}
+                )}
               </RadioGroup>
             </CardContent>
             <CardFooter className="flex justify-between">
@@ -105,30 +130,33 @@ export default function LanguagePage() {
         <div className="md:w-1/3 space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>帮助说明</CardTitle>
+              <CardTitle className="flex items-center">
+                <Languages className="mr-2 h-5 w-5" />
+                {t("info")}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 text-sm">
               <div>
-                <span className="font-semibold">语言设置：</span>
+                <span className="font-semibold">{t("languageSettings")}：</span>
                 <span className="text-muted-foreground">
-                  选择您的首选语言，更改将在页面刷新后生效。
+                  {t("languageSettingsInfo")}
                 </span>
               </div>
               <div>
-                <span className="font-semibold">默认语言：</span>
+                <span className="font-semibold">{t("defaultLanguage")}：</span>
                 <span className="text-muted-foreground">
-                  如果未选择语言，系统将会根据您的浏览器设置自动选择。
+                  {t("defaultLanguageInfo")}
                 </span>
               </div>
               <div>
-                <span className="font-semibold">翻译贡献：</span>
+                <span className="font-semibold">{t("translationContribution")}：</span>
                 <span className="text-muted-foreground">
-                  如果您发现翻译有误或想贡献新的翻译，请联系我们。
+                  {t("translationContributionInfo")}
                 </span>
               </div>
             </CardContent>
             <CardFooter>
-              <Button variant="outline" className="w-full" disabled>
+              <Button variant="outline" className="w-full">
                 <ExternalLink className="mr-2 h-4 w-4" />
                 {t("contributeTranslation")}
               </Button>
@@ -136,6 +164,6 @@ export default function LanguagePage() {
           </Card>
         </div>
       </div>
-    </div>
+    </DocWrapper>
   );
 } 
