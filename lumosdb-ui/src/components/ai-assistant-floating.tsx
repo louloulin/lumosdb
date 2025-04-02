@@ -41,6 +41,27 @@ export function AIAssistantFloating() {
     }
   }, [messages, isExpanded]);
 
+  // 添加键盘快捷键支持
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // ESC键退出全屏
+      if (e.key === 'Escape' && isFullscreen) {
+        setIsFullscreen(false);
+      }
+      
+      // F11或Ctrl+Enter切换全屏
+      if ((e.key === 'F11' || (e.ctrlKey && e.key === 'Enter')) && isExpanded) {
+        e.preventDefault();
+        setIsFullscreen(!isFullscreen);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isFullscreen, isExpanded]);
+
   // 切换展开/收起
   const toggleExpanded = () => {
     setIsExpanded(!isExpanded);
@@ -260,14 +281,21 @@ ${result.explanation}
                 }
               }}
             />
-            <Button 
-              size="icon" 
-              className={`${isFullscreen ? 'h-[50px] w-[50px]' : 'h-[40px]'}`} 
-              disabled={!prompt.trim() || isGenerating}
-              onClick={sendMessage}
-            >
-              <Send className={`${isFullscreen ? 'h-5 w-5' : 'h-4 w-4'}`} />
-            </Button>
+            <div className="flex flex-col">
+              <Button 
+                size="icon" 
+                className={`${isFullscreen ? 'h-[50px] w-[50px]' : 'h-[40px]'}`} 
+                disabled={!prompt.trim() || isGenerating}
+                onClick={sendMessage}
+              >
+                <Send className={`${isFullscreen ? 'h-5 w-5' : 'h-4 w-4'}`} />
+              </Button>
+              {isFullscreen && (
+                <div className="text-[9px] mt-1 text-center text-muted-foreground">
+                  按ESC退出全屏
+                </div>
+              )}
+            </div>
           </div>
         </CardFooter>
       </Card>
