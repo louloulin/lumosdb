@@ -51,6 +51,13 @@ pub struct VectorSearchRequest {
     pub options: VectorSearchOptions,
 }
 
+/// 向量检索结果
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VectorSearchResult {
+    /// 匹配结果
+    pub matches: Vec<VectorMatch>,
+}
+
 /// 向量检索响应
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VectorSearchResponse {
@@ -120,4 +127,22 @@ pub struct HealthResponse {
     pub status: String,
     /// 版本信息
     pub version: String,
+}
+
+/// 添加表格信息类型定义（兼容性）
+#[derive(Debug, Serialize, Deserialize)]
+pub struct TableInfo {
+    /// 表名
+    pub name: String,
+    /// 列信息
+    pub columns: Vec<ColumnInfo>,
+}
+
+/// 添加列信息类型定义（兼容性）
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ColumnInfo {
+    /// 列名
+    pub name: String,
+    /// 数据类型
+    pub data_type: String,
 } 

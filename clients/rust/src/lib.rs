@@ -7,19 +7,12 @@ mod health_client;
 mod vector_client;
 mod error;
 mod types;
-mod client;
 
 // 重新导出常用类型
-pub use client::LumosDbClient;
-pub use db_client::DbClient;
-pub use health_client::HealthClient;
-pub use vector_client::VectorClient;
-pub use error::LumosError;
+pub use error::{Error, LumosError, Result};
 pub use types::{VectorMatch, VectorSearchResult, VectorSearchOptions};
 
-pub type Result<T> = std::result::Result<T, LumosError>;
-
-/// LumosDB客户端
+// 客户端接口 - 用于不公开内部API客户端
 pub struct LumosDbClient {
     /// API客户端
     api_client: Arc<api_client::ApiClient>,

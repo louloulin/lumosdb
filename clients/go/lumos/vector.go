@@ -217,7 +217,7 @@ func (v *VectorService) DeleteVector(ctx context.Context, collection string, id 
 		ctx = context.Background()
 	}
 
-	url := fmt.Sprintf("%s/api/vector/collections/%s/vector/%s", v.client.BaseURL(), collection, id)
+	url := fmt.Sprintf("%s/api/vector/collections/%s/vectors/%s", v.client.BaseURL(), collection, id)
 	req, err := http.NewRequestWithContext(ctx, "DELETE", url, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
@@ -301,4 +301,47 @@ func (v *VectorService) Search(ctx context.Context, collection string, vector []
 	}
 
 	return response.Data.Results, nil
+}
+
+// GetVector 获取单个向量
+func (v *VectorService) GetVector(ctx context.Context, collection string, id string) ([]float32, map[string]interface{}, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	url := fmt.Sprintf("%s/api/vector/collections/%s/vectors/%s", v.client.BaseURL(), collection, id)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if v.client.apiKey != "" {
+		req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", v.client.apiKey))
+	}
+
+	resp, err := v.client.httpClient.Do(req)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get vector: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("failed to get vector: HTTP %s", resp.Status)
+	}
+
+	var response struct {
+		Success bool `json:"success"`
+		Data    struct {
+			ID       string                 `json:"id"`
+			Vector   []float32              `json:"vector"`
+			Metadata map[string]interface{} `json:"metadata,omitempty"`
+		} `json:"data"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return nil, nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return response.Data.Vector, response.Data.Metadata, nil
 }

@@ -5,7 +5,7 @@ use crate::api_client::ApiClient;
 use crate::error::Result;
 use crate::types::{
     ApiResponse, VectorDeleteRequest, VectorInsertRequest, VectorSearchOptions, VectorSearchRequest,
-    VectorSearchResponse, VectorUpdateRequest,
+    VectorSearchResponse, VectorUpdateRequest, VectorSearchResult,
 };
 
 /// 向量客户端
@@ -27,36 +27,27 @@ impl VectorClient {
 
     /// 构建向量请求路径
     fn build_vector_path(&self, endpoint: &str) -> String {
-        format!("/collections/{}/vectors/{}", self.collection, endpoint)
-    }
-
-    /// 发送向量请求并解析响应
-    async fn send_vector_request<T, R>(&self, endpoint: &str, data: &T) -> Result<R>
-    where
-        T: serde::Serialize,
-        R: DeserializeOwned,
-    {
-        let path = self.build_vector_path(endpoint);
-        let response: ApiResponse<R> = self.api_client.post(&path, data).await?;
-        
-        match response.data {
-            Some(data) => Ok(data),
-            None => Err(crate::error::Error::ApiError(
-                response.error_code.unwrap_or_else(|| "unknown".to_string()),
-                response.error.unwrap_or_else(|| "Unknown error".to_string()),
-            )),
-        }
+        format!("/api/vector/collections/{}/{}", self.collection, endpoint)
     }
 
     /// 向量搜索
-    pub async fn search(&self, vector: Vec<f32>, options: Option<VectorSearchOptions>) -> Result<VectorSearchResponse> {
+    pub async fn search(&self, vector: Vec<f32>, options: Option<VectorSearchOptions>) -> Result<VectorSearchResult> {
         let options = options.unwrap_or_default();
         let request = VectorSearchRequest {
             vector,
             options,
         };
         
-        self.send_vector_request("search", &request).await
+        let path = format!("/api/vector/collections/{}/search", self.collection);
+        let response: serde_json::Value = self.api_client.post(&path, &request).await?;
+        
+        if let Some(data) = response.get("data") {
+            let result: VectorSearchResult = serde_json::from_value(data.clone())
+                .map_err(|e| crate::error::Error::ParseError(e.to_string()))?;
+            Ok(result)
+        } else {
+            Err(crate::error::Error::ParseError("无法解析搜索结果".to_string()))
+        }
     }
 
     /// 向量插入
@@ -74,7 +65,8 @@ impl VectorClient {
             namespace,
         };
         
-        let _: () = self.send_vector_request("", &request).await?;
+        let path = format!("/api/vector/collections/{}/vectors", self.collection);
+        let _: serde_json::Value = self.api_client.post(&path, &request).await?;
         Ok(())
     }
 
@@ -87,24 +79,21 @@ impl VectorClient {
         namespace: Option<String>,
     ) -> Result<()> {
         let request = VectorUpdateRequest {
-            id,
+            id: id.clone(),
             vector,
             metadata,
             namespace,
         };
         
-        let _: () = self.send_vector_request("update", &request).await?;
+        let path = format!("/api/vector/collections/{}/vectors/{}", self.collection, id);
+        let _: serde_json::Value = self.api_client.put(&path, &request).await?;
         Ok(())
     }
 
     /// 向量删除
     pub async fn delete(&self, id: String, namespace: Option<String>) -> Result<()> {
-        let request = VectorDeleteRequest {
-            id,
-            namespace,
-        };
-        
-        let _: () = self.send_vector_request("delete", &request).await?;
+        let path = format!("/api/vector/collections/{}/vectors/{}", self.collection, id);
+        let _: serde_json::Value = self.api_client.delete(&path).await?;
         Ok(())
     }
 } 

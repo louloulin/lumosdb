@@ -93,8 +93,51 @@ func main() {
 		fmt.Printf("  %d. ID: %s, 得分: %.6f\n", i+1, match.ID, match.Score)
 	}
 
-	// 7. 删除测试集合
-	fmt.Printf("\n[7] 删除测试集合 '%s'...\n", testCollectionName)
+	// 7. 获取向量
+	fmt.Println("\n[7] 获取向量...")
+	vectorData, metadata, err := client.Vector.GetVector(ctx, testCollectionName, testVectorID)
+	if err != nil {
+		fmt.Printf("警告: 获取向量时出错: %v\n", err)
+	} else {
+		fmt.Printf("向量内容: %v\n", vectorData)
+		fmt.Printf("元数据: %v\n", metadata)
+	}
+
+	// 8. 更新向量 (通过删除并重新添加实现)
+	fmt.Println("\n[8] 更新向量...")
+	updatedVector := []float32{0.2, 0.3, 0.4, 0.5}
+
+	updatedMetadata := map[string]interface{}{
+		"test":      true,
+		"source":    "go_validation",
+		"updated":   true,
+		"timestamp": time.Now().Unix(),
+	}
+
+	// 先尝试删除旧向量
+	err = client.Vector.DeleteVector(ctx, testCollectionName, testVectorID)
+	if err != nil {
+		fmt.Printf("警告: 删除原向量时出错，将尝试直接添加新向量: %v\n", err)
+	} else {
+		fmt.Printf("原向量 '%s' 删除成功\n", testVectorID)
+	}
+
+	// 添加新向量来实现更新
+	err = client.Vector.AddEmbeddings(
+		ctx,
+		testCollectionName,
+		[]string{testVectorID},
+		[][]float32{updatedVector},
+		[]map[string]interface{}{updatedMetadata},
+	)
+	if err != nil {
+		fmt.Printf("❌ 更新向量失败: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("向量 '%s' 更新成功\n", testVectorID)
+
+	// 9. 删除测试集合
+	fmt.Printf("\n[9] 删除测试集合 '%s'...\n", testCollectionName)
 	err = client.Vector.DeleteCollection(ctx, testCollectionName)
 	if err != nil {
 		fmt.Printf("❌ 删除集合失败: %v\n", err)

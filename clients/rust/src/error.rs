@@ -33,4 +33,15 @@ pub enum Error {
     /// 其他错误
     #[error("其他错误: {0}")]
     Other(String),
-} 
+    
+    /// 网络错误
+    #[error("网络错误: {0}")]
+    NetworkError(String),
+    
+    /// 解析错误
+    #[error("解析错误: {0}")]
+    ParseError(String),
+}
+
+// 为了兼容性，保留LumosError别名
+pub type LumosError = Error; 
