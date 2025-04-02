@@ -893,7 +893,7 @@ impl Repl {
         if let Some(conn) = connection {
             // 创建测试表
             let create_table = "CREATE TABLE IF NOT EXISTS benchmark_test (
-                id INTEGER PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,
                 value REAL,
                 content TEXT,
@@ -917,6 +917,8 @@ impl Repl {
             let start_time = std::time::Instant::now();
             let mut success_count = 0;
             let mut error_count = 0;
+            let mut retry_count = 0;
+            let max_retries = 3;
             
             println!("开始写入测试...");
             
@@ -929,9 +931,8 @@ impl Repl {
                 let mut params = Vec::new();
                 
                 for i in 0..current_batch_size {
-                    // 使用时间戳+随机数生成唯一ID，避免冲突
-                    let timestamp = chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0) as u64;
-                    let id = batch_start + i + timestamp as usize % 1000000;
+                    // 使用更可靠的ID生成方法
+                    let id = batch_start + i;
                     let name = format!("test_name_{}", id);
                     let value = (id as f64) * 1.5;
                     let content = format!("test_content_{}", id);
@@ -951,17 +952,34 @@ impl Repl {
                     values.join(", ")
                 );
                 
-                // 执行批量插入
-                match conn.execute_with_params(&sql, &params) {
-                    Ok(_) => {
-                        success_count += current_batch_size;
-                        if (batch_start + current_batch_size) % (batch_size * 10) == 0 || batch_start + current_batch_size == records {
-                            println!("已插入 {}/{} 条记录", batch_start + current_batch_size, records);
+                // 执行批量插入，带重试机制
+                let mut retry = 0;
+                while retry < max_retries {
+                    match conn.execute_with_params(&sql, &params) {
+                        Ok(_) => {
+                            success_count += current_batch_size;
+                            if (batch_start + current_batch_size) % (batch_size * 10) == 0 || batch_start + current_batch_size == records {
+                                println!("已插入 {}/{} 条记录", batch_start + current_batch_size, records);
+                            }
+                            break;
+                        },
+                        Err(e) => {
+                            if e.to_string().contains("UNIQUE constraint failed") {
+                                retry += 1;
+                                if retry == max_retries {
+                                    println!("批量插入失败(重试{}次): {}", max_retries, e);
+                                    error_count += current_batch_size;
+                                    retry_count += 1;
+                                } else {
+                                    println!("重试第{}次插入...", retry + 1);
+                                    std::thread::sleep(std::time::Duration::from_millis(100));
+                                }
+                            } else {
+                                println!("批量插入失败: {}", e);
+                                error_count += current_batch_size;
+                                break;
+                            }
                         }
-                    },
-                    Err(e) => {
-                        println!("批量插入失败: {}", e);
-                        error_count += current_batch_size;
                     }
                 }
             }
@@ -974,6 +992,7 @@ impl Repl {
             println!("总记录数: {}", records);
             println!("成功记录: {}", success_count);
             println!("失败记录: {}", error_count);
+            println!("重试次数: {}", retry_count);
             println!("总耗时: {:.2}秒", elapsed.as_secs_f64());
             println!("每秒操作数: {:.2}", ops_per_second);
             println!("平均延迟: {:.4}毫秒", 1000.0 / ops_per_second);
@@ -991,6 +1010,10 @@ impl Repl {
             table.add_row(prettytable::Row::new(vec![
                 prettytable::Cell::new("失败记录"),
                 prettytable::Cell::new(&error_count.to_string()),
+            ]));
+            table.add_row(prettytable::Row::new(vec![
+                prettytable::Cell::new("重试次数"),
+                prettytable::Cell::new(&retry_count.to_string()),
             ]));
             table.add_row(prettytable::Row::new(vec![
                 prettytable::Cell::new("总耗时(秒)"),
