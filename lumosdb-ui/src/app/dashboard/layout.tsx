@@ -8,6 +8,7 @@ import { useBreadcrumbs } from "@/hooks/use-breadcrumbs"
 import { AuthProvider } from "@/contexts/auth-context"
 import { LanguageSwitcher } from "@/components/language-switcher"
 import { I18nProvider } from "@/i18n/provider"
+import { AIAssistantFloating } from "@/components/ai-assistant-floating"
 
 export default function DashboardLayout({
   children,
@@ -35,6 +36,8 @@ export default function DashboardLayout({
               {children}
             </main>
           </div>
+          
+          <AIAssistantFloating />
         </div>
       </I18nProvider>
     </AuthProvider>
