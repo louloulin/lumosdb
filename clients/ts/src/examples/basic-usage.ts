@@ -59,7 +59,7 @@ async function main() {
     console.log('表名:', tableInfo.name);
     console.log('列:');
     tableInfo.columns.forEach((column) => {
-      console.log(`  ${column.name} (${column.data_type || 'unknown'})${column.is_primary_key ? ' PRIMARY KEY' : ''}${column.is_nullable ? '' : ' NOT NULL'}`);
+      console.log(`  ${column.name} (${column.type || 'unknown'})${column.pk ? ' PRIMARY KEY' : ''}${!column.notnull ? '' : ' NOT NULL'}`);
     });
     
     // 总结测试结果

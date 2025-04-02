@@ -93,6 +93,27 @@ export class VectorClient {
   }
   
   /**
+   * 添加嵌入向量（原始格式）
+   * @param collection 集合名称
+   * @param ids 向量ID数组
+   * @param embeddings 向量值二维数组
+   * @param metadata 元数据数组（可选）
+   */
+  async addEmbeddings(
+    collection: string,
+    ids: string[],
+    embeddings: number[][],
+    metadata?: Record<string, any>[]
+  ): Promise<void> {
+    const response = await this.apiClient.post(`/api/vector/collections/${collection}/vectors`, {
+      ids,
+      embeddings,
+      metadata
+    });
+    throwIfError(response);
+  }
+  
+  /**
    * 删除向量
    * @param collection 集合名称
    * @param id 向量ID
@@ -107,21 +128,18 @@ export class VectorClient {
    * @param collection 集合名称
    * @param queryVector 查询向量
    * @param topK 返回结果数量
-   * @param filter 元数据过滤条件
    * @returns 搜索结果
    */
   async search(
     collection: string,
     queryVector: number[],
-    topK: number,
-    filter?: Record<string, any>
+    topK: number
   ): Promise<SearchResult[]> {
     const response = await this.apiClient.post<{ results: SearchResult[] }>(
       `/api/vector/collections/${collection}/search`,
       {
-        query_vector: queryVector,
-        top_k: topK,
-        filter
+        vector: queryVector,
+        top_k: topK
       }
     );
     throwIfError(response);
