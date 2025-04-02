@@ -1,15 +1,23 @@
 use std::sync::Arc;
 
 // 导出子模块
-pub mod api_client;
-pub mod db_client;
-pub mod error;
-pub mod health_client;
-pub mod types;
-pub mod vector_client;
+mod api_client;
+mod db_client;
+mod health_client;
+mod vector_client;
+mod error;
+mod types;
+mod client;
 
 // 重新导出常用类型
-pub use crate::error::{Error, Result};
+pub use client::LumosDbClient;
+pub use db_client::DbClient;
+pub use health_client::HealthClient;
+pub use vector_client::VectorClient;
+pub use error::LumosError;
+pub use types::{VectorMatch, VectorSearchResult, VectorSearchOptions};
+
+pub type Result<T> = std::result::Result<T, LumosError>;
 
 /// LumosDB客户端
 pub struct LumosDbClient {
@@ -61,5 +69,10 @@ mod tests {
         let client = LumosDbClient::new("http://localhost:8000").with_api_key("test-key");
         assert!(client.api_client.base_url().contains("http://localhost:8000"));
         // API密钥内部保存，无法直接断言
+    }
+
+    #[test]
+    fn it_works() {
+        assert_eq!(2 + 2, 4);
     }
 } 

@@ -1,6 +1,8 @@
 package lumos
 
 import (
+	"bytes"
+	"io"
 	"net/http"
 	"time"
 )
@@ -71,4 +73,9 @@ func (c *Client) SetAPIKey(apiKey string) {
 // BaseURL returns the base URL of the client
 func (c *Client) BaseURL() string {
 	return c.baseURL
+}
+
+// byteReader 将byte数组转换为io.Reader
+func byteReader(b []byte) io.Reader {
+	return bytes.NewReader(b)
 }

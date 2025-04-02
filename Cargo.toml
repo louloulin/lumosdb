@@ -71,7 +71,15 @@ sql = []
 plugins = []
 
 [workspace]
-members = ["dataflow/wasm-postgresql-test", "vector-test", "server", "core", "lumosdb_cli"]
+members = [
+    "dataflow/wasm-postgresql-test", 
+    "vector-test", 
+    "server", 
+    "core", 
+    "lumosdb_cli",
+    "clients/rust",
+    "clients/validation",
+]
 exclude = ["examples/plugins/postgresql"]
 
 [workspace.dependencies]

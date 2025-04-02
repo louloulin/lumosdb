@@ -13,11 +13,33 @@ import (
 	"github.com/pkg/errors"
 )
 
-// APIResponse represents the standard API response from LumosDB
+// APIError 表示API错误
+type APIError struct {
+	StatusCode int
+	Message    string
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("API error (HTTP %d): %s", e.StatusCode, e.Message)
+}
+
+// NewAPIError 从HTTP响应创建API错误
+func NewAPIError(resp *http.Response) *APIError {
+	var body []byte
+	if resp.Body != nil {
+		body, _ = io.ReadAll(resp.Body)
+	}
+	return &APIError{
+		StatusCode: resp.StatusCode,
+		Message:    string(body),
+	}
+}
+
+// APIResponse 表示API响应
 type APIResponse struct {
-	Data      json.RawMessage `json:"data,omitempty"`
-	Error     string          `json:"error,omitempty"`
-	ErrorCode string          `json:"error_code,omitempty"`
+	Success bool            `json:"success"`
+	Data    json.RawMessage `json:"data"`
+	Error   string          `json:"error,omitempty"`
 }
 
 // DoRequest sends a request to the API and parses the response
@@ -62,6 +84,10 @@ func (c *Client) DoRequest(method, endpoint string, body interface{}, result int
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return NewAPIError(resp)
+	}
+
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
@@ -71,18 +97,17 @@ func (c *Client) DoRequest(method, endpoint string, body interface{}, result int
 	// Parse response
 	var apiResp APIResponse
 	if err := json.Unmarshal(respBody, &apiResp); err != nil {
-		return errors.Wrap(err, "failed to parse API response")
+		return fmt.Errorf("failed to parse API response: %w", err)
 	}
 
-	// Check for API error
-	if apiResp.Error != "" {
-		return fmt.Errorf("API error (%s): %s", apiResp.ErrorCode, apiResp.Error)
+	if !apiResp.Success {
+		return fmt.Errorf("API error: %s", apiResp.Error)
 	}
 
 	// Parse result if needed
 	if result != nil && apiResp.Data != nil {
 		if err := json.Unmarshal(apiResp.Data, result); err != nil {
-			return errors.Wrap(err, "failed to parse response data")
+			return fmt.Errorf("failed to parse response data: %w", err)
 		}
 	}
 

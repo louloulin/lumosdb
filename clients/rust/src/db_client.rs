@@ -1,83 +1,115 @@
-use serde::de::DeserializeOwned;
-use std::sync::Arc;
+use crate::error::LumosError;
+use crate::types::{TableInfo, ColumnInfo};
+use reqwest::Client as HttpClient;
+use serde_json::Value;
 
-use crate::api_client::ApiClient;
-use crate::error::Result;
-use crate::types::ApiResponse;
-
-/// 数据库客户端
+/// 数据库客户端，负责管理集合和执行SQL查询
 pub struct DbClient {
-    /// API客户端
-    api_client: Arc<ApiClient>,
+    http_client: HttpClient,
+    base_url: String,
 }
 
 impl DbClient {
     /// 创建新的数据库客户端
-    pub fn new(api_client: Arc<ApiClient>) -> Self {
-        Self { api_client }
-    }
-
-    /// 列出所有集合
-    pub async fn list_collections(&self) -> Result<Vec<String>> {
-        let response: ApiResponse<Vec<String>> = self.api_client.get("/collections").await?;
-        
-        match response.data {
-            Some(collections) => Ok(collections),
-            None => Err(crate::error::Error::ApiError(
-                response.error_code.unwrap_or_else(|| "unknown".to_string()),
-                response.error.unwrap_or_else(|| "Failed to list collections".to_string()),
-            )),
+    ///
+    /// # 参数
+    /// * `http_client` - HTTP客户端
+    /// * `base_url` - LumosDB服务器的基础URL
+    pub fn new(http_client: HttpClient, base_url: String) -> Self {
+        Self {
+            http_client,
+            base_url,
         }
     }
 
-    /// 创建新集合
-    pub async fn create_collection(&self, name: &str, dimension: u32) -> Result<()> {
-        let data = serde_json::json!({
+    /// 获取所有集合列表
+    pub async fn list_collections(&self) -> Result<Vec<String>, LumosError> {
+        let url = format!("{}/api/vector/collections", self.base_url);
+        
+        let response = self.http_client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| LumosError::NetworkError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            return Err(LumosError::ApiError(format!(
+                "Failed to list collections: HTTP {}", 
+                response.status()
+            )));
+        }
+        
+        let result: Value = response
+            .json()
+            .await
+            .map_err(|e| LumosError::ParseError(e.to_string()))?;
+            
+        // 提取集合名称列表
+        match result.get("collections") {
+            Some(collections) => {
+                let names = collections
+                    .as_array()
+                    .ok_or_else(|| LumosError::ParseError("Expected collections array".to_string()))?
+                    .iter()
+                    .filter_map(|c| c.get("name")?.as_str().map(String::from))
+                    .collect();
+                Ok(names)
+            },
+            None => Err(LumosError::ParseError("Missing collections field".to_string())),
+        }
+    }
+
+    /// 创建新的向量集合
+    ///
+    /// # 参数
+    /// * `name` - 集合名称
+    /// * `dimension` - 向量维度
+    pub async fn create_collection(&self, name: &str, dimension: usize) -> Result<(), LumosError> {
+        let url = format!("{}/api/vector/collections", self.base_url);
+        
+        let body = serde_json::json!({
             "name": name,
-            "dimension": dimension
+            "dimension": dimension,
+            "distance": "euclidean" // 使用默认距离度量
         });
         
-        let response: ApiResponse<()> = self.api_client.post("/collections", &data).await?;
-        
-        if response.error.is_some() {
-            return Err(crate::error::Error::ApiError(
-                response.error_code.unwrap_or_else(|| "unknown".to_string()),
-                response.error.unwrap_or_else(|| "Failed to create collection".to_string()),
-            ));
+        let response = self.http_client
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| LumosError::NetworkError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            return Err(LumosError::ApiError(format!(
+                "Failed to create collection: HTTP {}",
+                response.status()
+            )));
         }
         
         Ok(())
     }
 
-    /// 删除集合
-    pub async fn delete_collection(&self, name: &str) -> Result<()> {
-        let path = format!("/collections/{}", name);
-        let response: ApiResponse<()> = self.api_client.delete(&path).await?;
+    /// 删除向量集合
+    ///
+    /// # 参数
+    /// * `name` - 集合名称
+    pub async fn delete_collection(&self, name: &str) -> Result<(), LumosError> {
+        let url = format!("{}/api/vector/collections/{}", self.base_url, name);
         
-        if response.error.is_some() {
-            return Err(crate::error::Error::ApiError(
-                response.error_code.unwrap_or_else(|| "unknown".to_string()),
-                response.error.unwrap_or_else(|| "Failed to delete collection".to_string()),
-            ));
+        let response = self.http_client
+            .delete(&url)
+            .send()
+            .await
+            .map_err(|e| LumosError::NetworkError(e.to_string()))?;
+            
+        if !response.status().is_success() {
+            return Err(LumosError::ApiError(format!(
+                "Failed to delete collection: HTTP {}",
+                response.status()
+            )));
         }
         
         Ok(())
-    }
-
-    /// 获取集合信息
-    pub async fn get_collection<T>(&self, name: &str) -> Result<T>
-    where
-        T: DeserializeOwned,
-    {
-        let path = format!("/collections/{}", name);
-        let response: ApiResponse<T> = self.api_client.get(&path).await?;
-        
-        match response.data {
-            Some(collection) => Ok(collection),
-            None => Err(crate::error::Error::ApiError(
-                response.error_code.unwrap_or_else(|| "unknown".to_string()),
-                response.error.unwrap_or_else(|| "Collection not found".to_string()),
-            )),
-        }
     }
 }
