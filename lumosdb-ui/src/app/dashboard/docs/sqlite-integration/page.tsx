@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ResponsiveContainer } from "@/components/ui/responsive-container"
+import { DocWrapper } from "@/components/doc-wrapper"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent } from "@/components/ui/card"
@@ -23,7 +23,7 @@ import {
 
 export default function SQLiteIntegrationPage() {
   return (
-    <ResponsiveContainer className="max-w-4xl mx-auto p-6">
+    <DocWrapper>
       <div className="flex items-center mb-6">
         <Link href="/dashboard/docs">
           <Button variant="ghost" size="sm" className="gap-1">
@@ -216,7 +216,7 @@ export default function SQLiteIntegrationPage() {
             <pre className="text-sm">
               <code>
                 -- Basic query
-                {"\n"}SELECT * FROM products WHERE price > 500;
+                {"\n"}SELECT * FROM products WHERE price &gt; 500;
                 {"\n"}
                 {"\n"}-- Join query
                 {"\n"}SELECT p.name, p.price, c.name as category
@@ -411,6 +411,6 @@ export default function SQLiteIntegrationPage() {
           </Button>
         </div>
       </div>
-    </ResponsiveContainer>
+    </DocWrapper>
   )
 } 

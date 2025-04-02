@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ResponsiveContainer } from "@/components/ui/responsive-container"
+import { DocWrapper } from "@/components/doc-wrapper"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent } from "@/components/ui/card"
@@ -25,7 +25,7 @@ import {
 
 export default function PerformancePage() {
   return (
-    <ResponsiveContainer className="max-w-4xl mx-auto p-6">
+    <DocWrapper>
       <div className="flex items-center mb-6">
         <Link href="/dashboard/docs">
           <Button variant="ghost" size="sm" className="gap-1">
@@ -202,9 +202,11 @@ export default function PerformancePage() {
                 <TableCell><code>SELECT * FROM products ORDER BY price DESC LIMIT 100;</code></TableCell>
               </TableRow>
               <TableRow>
-                <TableCell className="font-medium">Inefficient WHERE clauses</TableCell>
+                <TableCell className="font-medium">WHERE clauses</TableCell>
                 <TableCell>Make conditions indexable</TableCell>
-                <TableCell><code>WHERE created_at &gt; &apos;2023-01-01&apos;</code> instead of <code>WHERE YEAR(created_at) &gt; 2022</code></TableCell>
+                <TableCell>
+                  <code>WHERE created_at &gt; &apos;2023-01-01&apos;</code> instead of <code>WHERE YEAR(created_at) &gt; 2022</code>
+                </TableCell>
               </TableRow>
             </TableBody>
           </Table>
@@ -430,7 +432,7 @@ export default function PerformancePage() {
                 {"\n"}PRAGMA mmap_size = 30000000000;     -- Memory-map up to 30GB of database file
                 {"\n"}
                 {"\n"}-- Apply settings automatically on connection
-                {"\n"}-- You can configure these in LumosDB Settings > Database Configuration
+                {"\n"}-- You can configure these in LumosDB Settings &gt; Database Configuration
               </code>
             </pre>
           </div>
@@ -625,6 +627,6 @@ export default function PerformancePage() {
           </Button>
         </div>
       </div>
-    </ResponsiveContainer>
+    </DocWrapper>
   )
 } 

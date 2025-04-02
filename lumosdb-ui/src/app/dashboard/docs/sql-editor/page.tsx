@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { ResponsiveContainer } from "@/components/ui/responsive-container"
+import { DocWrapper } from "@/components/doc-wrapper"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Card, CardContent } from "@/components/ui/card"
@@ -24,7 +24,7 @@ import {
 
 export default function SQLEditorPage() {
   return (
-    <ResponsiveContainer className="max-w-4xl mx-auto p-6">
+    <DocWrapper>
       <div className="flex items-center mb-6">
         <Link href="/dashboard/docs">
           <Button variant="ghost" size="sm" className="gap-1">
@@ -165,7 +165,7 @@ export default function SQLEditorPage() {
                 {"\n"}  MAX(price) as highest_price
                 {"\n"}FROM products
                 {"\n"}GROUP BY category
-                {"\n"}HAVING COUNT(*) > 5
+                {"\n"}HAVING COUNT(*) &gt; 5
                 {"\n"}ORDER BY average_price DESC;
                 {"\n"}
                 {"\n"}-- Subqueries
@@ -174,7 +174,7 @@ export default function SQLEditorPage() {
                 {"\n"}WHERE id IN (
                 {"\n"}  SELECT DISTINCT user_id
                 {"\n"}  FROM orders
-                {"\n"}  WHERE order_date >= date('now', '-30 days')
+                {"\n"}  WHERE order_date &gt;= date('now', '-30 days')
                 {"\n"});
               </code>
             </pre>
@@ -457,10 +457,10 @@ export default function SQLEditorPage() {
             <pre className="text-sm">
               <code>
                 -- Using named parameters
-                {"\n"}SELECT * FROM users WHERE status = :status AND created_at > :since_date;
+                {"\n"}SELECT * FROM users WHERE status = :status AND created_at &gt; :since_date;
                 {"\n"}
                 {"\n"}-- Using question mark placeholders (positional parameters)
-                {"\n"}SELECT * FROM products WHERE category = ? AND price > ?;
+                {"\n"}SELECT * FROM products WHERE category = ? AND price &gt; ?;
               </code>
             </pre>
           </div>
@@ -486,7 +486,7 @@ export default function SQLEditorPage() {
                 {"\n"}FROM users
                 {"\n"}LEFT JOIN orders ON users.id = orders.user_id
                 {"\n"}GROUP BY users.id
-                {"\n"}HAVING order_count > 5;
+                {"\n"}HAVING order_count &gt; 5;
               </code>
             </pre>
           </div>
@@ -555,6 +555,6 @@ export default function SQLEditorPage() {
           </Button>
         </div>
       </div>
-    </ResponsiveContainer>
+    </DocWrapper>
   )
 } 
