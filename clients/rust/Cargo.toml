@@ -1,28 +1,25 @@
 [package]
-name = "lumos-client"
+name = "lumos-db"
 version = "0.1.0"
 edition = "2021"
-description = "Rust client for Lumos-DB, a data platform for AI Agents"
-authors = ["Lumos Team"]
+description = "LumosDB Rust SDK - Client library for LumosDB vector database"
+authors = ["LumosDB Team"]
 license = "MIT"
+repository = "https://github.com/linchonglin/lumos-db"
+readme = "README.md"
+keywords = ["vector", "database", "embedding", "ai", "search"]
+categories = ["database", "api-bindings"]
 
 [dependencies]
-# Lumos-DB core library
-lumos-core = { path = "../../core" }
-
-# Error handling
-thiserror = "1.0.47"
-
-# Serialization
-serde = { version = "1.0.183", features = ["derive"] }
-serde_json = "1.0.105"
-
-# Async runtime
-tokio = { version = "1.29.1", features = ["full"] }
-
-# Logging
-log = "0.4.19"
+reqwest = { version = "0.11", features = ["json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+url = "2.3"
+async-trait = "0.1"
 
 [dev-dependencies]
-tokio-test = "0.4.3"
-tempfile = "3.8.0" 
+tokio-test = "0.4"
+mockito = "0.31"
+anyhow = "1.0" 

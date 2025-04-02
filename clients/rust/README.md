@@ -1,112 +1,188 @@
-# Lumos-DB Rust Client
+# LumosDB Rust SDK
 
-This is the official Rust client for Lumos-DB, a data platform for AI Agents.
+[LumosDB](https://github.com/linchonglin/lumos-db) 的Rust客户端库，用于向量搜索和向量数据管理。
 
-## Features
+## 功能特点
 
-- Unified API for both SQLite and DuckDB operations
-- Automatic query routing based on query types
-- Support for cross-engine queries
-- JSON result conversion for easy data manipulation
-- Typed parameters for safe query execution
+- 简单的API设计
+- 异步支持 (使用 Tokio)
+- 完整类型支持
+- 向量搜索、插入、更新和删除
+- 集合管理
+- 健康检查
+- 错误处理
 
-## Installation
+## 安装
 
-Add the following to your `Cargo.toml`:
+将以下内容添加到您的 `Cargo.toml` 文件中:
 
 ```toml
 [dependencies]
-lumos-client = { path = "path/to/lumos-db/clients/rust" }
+lumos-db = "0.1.0"
 ```
 
-## Quick Start
+## 使用示例
 
 ```rust
-use lumos_client::LumosClient;
+use lumos_db::LumosDbClient;
+use std::error::Error;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create a client with default settings
-    let mut client = LumosClient::new()?;
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // 创建客户端
+    let client = LumosDbClient::new("http://localhost:8000");
     
-    // Execute a query
-    let results = client.query(
-        "SELECT * FROM users WHERE age > ?",
-        &[&18],
-    )?;
+    // 可选：设置API密钥
+    // let client = client.with_api_key("your-api-key");
     
-    // Display results
-    println!("Columns: {:?}", results.columns);
-    for row in results.rows {
-        println!("{:?}", row);
-    }
+    // 健康检查
+    let health = client.health().check().await?;
+    println!("服务状态: {}, 版本: {}", health.status, health.version);
     
-    // Get results as JSON
-    let json_results = client.query_json(
-        "SELECT id, name FROM users WHERE age > ?",
-        &[&18],
-    )?;
+    // 列出集合
+    let collections = client.db().list_collections().await?;
+    println!("集合列表: {:?}", collections);
     
-    for user in json_results {
-        println!("User: {}", user);
-    }
+    // 创建一个集合
+    client.db().create_collection("test_collection", 4).await?;
+    
+    // 获取向量客户端
+    let vector_client = client.vector("test_collection");
+    
+    // 插入向量
+    vector_client.insert(
+        "doc1".to_string(),
+        vec![0.1, 0.2, 0.3, 0.4],
+        None,
+        None,
+    ).await?;
+    
+    // 搜索向量
+    let results = vector_client.search(
+        vec![0.1, 0.2, 0.3, 0.4],
+        None,
+    ).await?;
+    
+    println!("搜索结果: {:?}", results.matches);
     
     Ok(())
 }
 ```
 
-## Custom Configuration
+更详细的示例请参考 [examples](./examples) 目录。
 
-You can customize the client configuration:
+## API概览
+
+### 主客户端
 
 ```rust
-use lumos_client::{LumosClient, ClientOptions};
+// 创建客户端
+let client = LumosDbClient::new("http://localhost:8000");
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let options = ClientOptions {
-        sqlite_path: "custom.db".to_string(),
-        duckdb_path: "custom.duckdb".to_string(),
-        sync_interval: 30,
-        max_memory_mb: 512,
-    };
-    
-    let mut client = LumosClient::with_options(options)?;
-    
-    // Use the client...
-    
-    Ok(())
+// 设置API密钥
+let client = client.with_api_key("your-api-key");
+
+// 获取不同的客户端
+let db_client = client.db();
+let vector_client = client.vector("collection_name");
+let health_client = client.health();
+```
+
+### 数据库客户端
+
+```rust
+// 列出所有集合
+let collections = client.db().list_collections().await?;
+
+// 创建集合
+client.db().create_collection("collection_name", 4).await?;
+
+// 删除集合
+client.db().delete_collection("collection_name").await?;
+
+// 获取集合信息
+let collection_info = client.db().get_collection::<CollectionInfo>("collection_name").await?;
+```
+
+### 向量客户端
+
+```rust
+// 获取向量客户端
+let vector_client = client.vector("collection_name");
+
+// 插入向量
+vector_client.insert(
+    "doc1".to_string(),
+    vec![0.1, 0.2, 0.3, 0.4],
+    Some(metadata),
+    Some("default".to_string()),
+).await?;
+
+// 更新向量
+vector_client.update(
+    "doc1".to_string(),
+    Some(vec![0.5, 0.6, 0.7, 0.8]),
+    Some(metadata),
+    None,
+).await?;
+
+// 删除向量
+vector_client.delete("doc1".to_string(), None).await?;
+
+// 搜索向量
+let options = VectorSearchOptions {
+    top_k: Some(10),
+    score_threshold: Some(0.7),
+    filter: Some(filter),
+    namespace: None,
+};
+
+let results = vector_client.search(
+    vec![0.1, 0.2, 0.3, 0.4],
+    Some(options),
+).await?;
+```
+
+### 健康检查客户端
+
+```rust
+// 检查健康状态
+let health = client.health().check().await?;
+println!("状态: {}, 版本: {}", health.status, health.version);
+```
+
+## 错误处理
+
+所有API方法均返回 `Result<T, Error>` 类型，其中 `Error` 是SDK的错误类型。
+
+```rust
+match client.db().list_collections().await {
+    Ok(collections) => {
+        println!("集合列表: {:?}", collections);
+    },
+    Err(e) => {
+        eprintln!("错误: {}", e);
+        // 处理不同类型的错误
+        match e {
+            Error::ApiError(code, msg) => {
+                eprintln!("API错误 {}: {}", code, msg);
+            },
+            Error::RequestError(e) => {
+                eprintln!("网络请求错误: {}", e);
+            },
+            // 其他错误类型...
+            _ => {
+                eprintln!("其他错误: {}", e);
+            }
+        }
+    }
 }
 ```
 
-## Cross-Engine Queries
+## 许可证
 
-Cross-engine queries allow you to join data from both SQLite and DuckDB:
+MIT
 
-```rust
-let result = client.query_cross_engine(
-    "SELECT u.id, u.name, COUNT(a.action) as action_count
-     FROM users u
-     JOIN user_activity a ON u.id = a.user_id
-     GROUP BY u.id, u.name",
-    &[],
-)?;
-```
+## 贡献
 
-You can also use the special CROSSENGINE syntax:
-
-```rust
-let result = client.query(
-    "SELECT * FROM CROSSENGINE(
-        SQLite: SELECT id, name FROM users,
-        DuckDB: SELECT user_id, SUM(duration) as total_duration FROM user_activity GROUP BY user_id
-     ) WHERE total_duration > ?",
-    &[&100],
-)?;
-```
-
-## Examples
-
-See the `examples` directory for more examples of how to use the Lumos-DB Rust client.
-
-## License
-
-MIT 
+欢迎提交问题和Pull Request! 

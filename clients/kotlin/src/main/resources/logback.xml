@@ -1,0 +1,18 @@
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- 设置默认日志级别 -->
+    <root level="INFO">
+        <appender-ref ref="STDOUT" />
+    </root>
+
+    <!-- LumosDB SDK的日志级别 -->
+    <logger name="io.lumosdb" level="INFO" />
+    
+    <!-- Ktor HTTP客户端的日志级别 -->
+    <logger name="io.ktor.client" level="WARN" />
+</configuration> 
