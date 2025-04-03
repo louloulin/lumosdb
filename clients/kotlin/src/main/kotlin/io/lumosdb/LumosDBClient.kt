@@ -6,95 +6,60 @@ import io.ktor.client.plugins.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.plugins.logging.*
 import io.ktor.serialization.kotlinx.json.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
+import io.lumosdb.client.api.DatabaseClient
+import io.lumosdb.client.api.HealthClient
+import io.lumosdb.client.api.VectorClient
+import io.lumosdb.client.api.VectorSearchOptions
 import kotlinx.serialization.json.Json
-import mu.KotlinLogging
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.seconds
-
-private val logger = KotlinLogging.logger {}
+import java.io.Closeable
 
 /**
- * 主LumosDB客户端类
- *
- * @property baseUrl API服务器的基础URL
- * @property apiKey 可选的API密钥
- * @property httpClient Ktor HTTP客户端
- * @property scope 协程作用域
+ * LumosDB客户端
  */
 class LumosDBClient(
     val baseUrl: String,
-    var apiKey: String? = null,
-    val httpClient: HttpClient = createDefaultHttpClient(),
-    val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
-) {
-    /**
-     * 数据库服务
-     */
-    val db = DBClient(this)
+    val apiKey: String? = null,
+    val requestTimeout: Long = 30000,
+    val logLevel: LogLevel = LogLevel.NONE
+) : Closeable {
 
-    /**
-     * 向量服务
-     */
-    val vector = VectorClient(this)
-    
-    /**
-     * 健康检查服务
-     */
-    val health = HealthClient(this)
+    // 内部HTTP客户端
+    val httpClient = HttpClient(CIO) {
+        install(ContentNegotiation) {
+            json(Json {
+                prettyPrint = true
+                isLenient = true
+                ignoreUnknownKeys = true
+            })
+        }
 
-    /**
-     * 设置API密钥
-     *
-     * @param apiKey 新的API密钥
-     */
-    fun setApiKey(apiKey: String) {
-        this.apiKey = apiKey
-    }
-
-    /**
-     * 关闭客户端资源
-     */
-    fun close() {
-        httpClient.close()
-    }
-
-    companion object {
-        /**
-         * 创建默认HTTP客户端
-         */
-        fun createDefaultHttpClient(
-            timeout: Duration = 30.seconds,
-            logLevel: LogLevel = LogLevel.INFO
-        ): HttpClient {
-            return HttpClient(CIO) {
-                install(HttpTimeout) {
-                    requestTimeoutMillis = timeout.inWholeMilliseconds
-                    connectTimeoutMillis = (timeout.inWholeMilliseconds / 2)
-                }
-                
-                install(ContentNegotiation) {
-                    json(Json {
-                        ignoreUnknownKeys = true
-                        prettyPrint = false
-                        isLenient = true
-                    })
-                }
-                
-                install(Logging) {
-                    level = logLevel
-                    logger = object : io.ktor.client.plugins.logging.Logger {
-                        override fun log(message: String) {
-                            io.lumosdb.logger.debug { message }
-                        }
-                    }
-                }
-                
-                engine {
-                    requestTimeout = timeout.inWholeMilliseconds
-                }
+        if (logLevel != LogLevel.NONE) {
+            install(Logging) {
+                logger = Logger.DEFAULT
+                level = logLevel
             }
         }
+
+        install(HttpTimeout) {
+            requestTimeoutMillis = requestTimeout
+        }
+
+        defaultRequest {
+            if (apiKey != null) {
+                headers.append("Authorization", "Bearer $apiKey")
+            }
+        }
+    }
+
+    // API客户端实例，转发到内部实现
+    val health = HealthClient(httpClient, "$baseUrl/api")
+    val db = DatabaseClient(httpClient, "$baseUrl/api")
+    val vector = VectorClient(httpClient, "$baseUrl/api")
+
+    /**
+     * 关闭客户端并释放资源
+     */
+    override fun close() {
+        httpClient.close()
     }
 } 
