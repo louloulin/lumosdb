@@ -184,6 +184,7 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 错误处理机制 (`/src/lib/api/error-handler.ts`)
 - ✅ 缓存服务 (`/src/lib/cache-service.ts`)
 - ✅ 数据传输服务 (`/src/lib/api/data-transfer-service.ts`)
+- ✅ 表管理服务 (`/src/lib/api/table-management-service.ts`)
 
 ### 10.3 测试用例
 - ✅ SQL服务测试 (`/src/lib/api/__tests__/sql-service.test.ts`)
@@ -194,6 +195,7 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 加载状态管理测试 (`/src/contexts/__tests__/loading-context.test.tsx`)
 - ✅ 加载API钩子测试 (`/src/lib/hooks/__tests__/use-loading-api.test.tsx`)
 - ✅ 数据传输服务测试 (`/src/lib/api/__tests__/data-transfer-service.test.ts`)
+- ✅ 表管理服务测试 (`/src/lib/api/__tests__/table-management-service.test.ts`)
 
 ### 10.4 新增功能
 - ✅ 加载状态上下文 (`/src/contexts/loading-context.tsx`)
@@ -206,6 +208,7 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 废弃旧的mock实现并提供平滑迁移方案
 - ✅ 实时数据服务实现
 - ✅ 数据传输模块 (支持多种格式导入导出)
+- ✅ 表管理功能 (获取表列表、表详情、删除表、清空表)
 
 ## 11. 下一步工作计划
 
