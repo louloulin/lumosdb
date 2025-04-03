@@ -87,7 +87,7 @@ export async function getTables(database?: string): Promise<TableInfo[]> {
   try {
     const client = sdkClient.getClient();
     const db = client.db as DbClient & {
-      getTables(params: GetTablesParams): Promise<SDKTablesResult>;
+      getTables(params: GetTablesParams): Promise<SDKTablesResult | { success?: boolean; data?: { tables: string[] } } | string[] | unknown>;
     };
     
     // 获取表列表
@@ -95,26 +95,93 @@ export async function getTables(database?: string): Promise<TableInfo[]> {
       database: database || 'main'
     });
     
-    if (!result.tables) {
-      return [];
+    // 处理不同的返回数据格式
+    
+    // 格式0: 直接返回数组 [string, string, ...]
+    if (Array.isArray(result)) {
+      console.log('直接返回的表数组', result);
+      // 将字符串数组转换为TableInfo对象数组
+      return result.map((tableName: string) => ({
+        name: tableName,
+        rowCount: 0,
+        sizeBytes: 0,
+        schema: []
+      }));
     }
     
-    // 转换为前端模型
-    return result.tables.map(table => ({
-      name: table.name,
-      rowCount: table.row_count || 0,
-      sizeBytes: table.size_bytes || 0,
-      schema: table.columns ? table.columns.map(col => ({
-        name: col.name,
-        type: col.type,
-        nullable: col.nullable || false,
-        primary: col.primary_key || false,
-        unique: col.unique || false,
-        default: col.default_value
-      })) : [],
-      created: table.created_at,
-      lastModified: table.last_modified
-    }));
+    // 格式1: { success: true, data: { tables: string[] } }
+    if (result && typeof result === 'object' && 'success' in result && 
+        result.success && 'data' in result && 
+        result.data && typeof result.data === 'object' && 
+        'tables' in result.data && Array.isArray(result.data.tables)) {
+      console.log('使用API新格式返回的表数据', result.data.tables);
+      // 将字符串数组转换为TableInfo对象数组
+      return result.data.tables.map((tableName: string) => ({
+        name: tableName,
+        rowCount: 0,
+        sizeBytes: 0,
+        schema: []
+      }));
+    }
+    
+    // 格式2: { tables: SDKTableInfo[] } 或 { tables: string[] }
+    if (result && typeof result === 'object' && 'tables' in result) {
+      if (!result.tables) {
+        return [];
+      }
+      
+      // 检查tables是否为字符串数组而不是对象数组
+      if (Array.isArray(result.tables) && result.tables.length > 0 && typeof result.tables[0] === 'string') {
+        console.log('表数据是字符串数组', result.tables);
+        // 将字符串数组转换为TableInfo对象数组
+        return (result.tables as string[]).map((tableName: string) => ({
+          name: tableName,
+          rowCount: 0,
+          sizeBytes: 0,
+          schema: []
+        }));
+      }
+      
+      // 标准格式处理
+      if (Array.isArray(result.tables)) {
+        return result.tables.map((table: any) => ({
+          name: table.name,
+          rowCount: table.row_count || 0,
+          sizeBytes: table.size_bytes || 0,
+          schema: Array.isArray(table.columns) ? table.columns.map((col: any) => ({
+            name: col.name,
+            type: col.type,
+            nullable: col.nullable || false,
+            primary: col.primary_key || false,
+            unique: col.unique || false,
+            default: col.default_value
+          })) : [],
+          created: table.created_at,
+          lastModified: table.last_modified
+        }));
+      }
+    }
+    
+    // 未识别的格式
+    console.error('未知的API返回格式', result);
+    // 尝试将未知格式转换为表名数组
+    if (result && typeof result === 'object') {
+      // 尝试从对象中提取可能的表数组
+      const possibleTables = Object.values(result).find(val => Array.isArray(val));
+      if (possibleTables && Array.isArray(possibleTables)) {
+        console.log('从未知格式中提取出可能的表数组', possibleTables);
+        return possibleTables.map((item: unknown) => ({
+          name: typeof item === 'string' ? item : (
+            typeof item === 'object' && item !== null && 'name' in item ? 
+            String((item as {name: unknown}).name) : String(item)
+          ),
+          rowCount: 0,
+          sizeBytes: 0,
+          schema: []
+        }));
+      }
+    }
+    return [];
     
   } catch (error) {
     const apiError = handleError(error);
