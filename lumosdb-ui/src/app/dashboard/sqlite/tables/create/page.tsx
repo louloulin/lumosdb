@@ -132,22 +132,35 @@ export default function CreateTablePage() {
   };
 
   // Create the table
-  const createTable = () => {
+  const createTable = async () => {
     if (!validateTable()) {
       return;
     }
 
-    // In a real app, this would send a request to the server
-    console.log("Creating table:", {
-      name: tableName,
-      columns,
-    });
+    const sql = generateSQLPreview();
+    console.log("Creating table with SQL:", sql);
 
-    // Show success message
-    toast.success("Table created successfully");
-    
-    // Navigate back to the tables list
-    router.push("/dashboard/sqlite");
+    try {
+      // 导入并使用createTable API
+      const { createTable } = await import("@/lib/api/sql-service");
+      const result = await createTable(sql);
+      
+      if (result.error) {
+        setError(result.error);
+        toast.error(`Failed to create table: ${result.error}`);
+        return;
+      }
+      
+      // Show success message
+      toast.success("Table created successfully");
+      
+      // Navigate back to the tables list
+      router.push("/dashboard/sqlite");
+    } catch (error) {
+      console.error("Error creating table:", error);
+      setError(error instanceof Error ? error.message : "An unknown error occurred");
+      toast.error("Failed to create table");
+    }
   };
 
   // Generate SQL preview
