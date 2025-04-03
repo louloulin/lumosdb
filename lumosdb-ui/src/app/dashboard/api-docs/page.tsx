@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { AlertCircle, CheckCircle, Code, ExternalLink, PlayCircle, Loader } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { getApiKeys } from "@/lib/api/auth"
+import * as authService from "@/lib/api/auth-service"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface ApiEndpoint {
@@ -338,6 +338,7 @@ export default function ApiDocsPage() {
   const [isLoading, setIsLoading] = useState<boolean>(false)
   const [error, setError] = useState<string>("")
   const [activeCategory, setActiveCategory] = useState<string>("all")
+  const [errorMessage, setErrorMessage] = useState<string>("")
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -386,13 +387,15 @@ export default function ApiDocsPage() {
 
   const loadApiKeys = async () => {
     try {
-      const keys = await getApiKeys()
-      setApiKeys(keys)
+      const result = await authService.getApiKeys();
+      const keys = result.keys || [];
+      setApiKeys(keys);
       if (keys.length > 0) {
-        setSelectedApiKey(`lmdb_xxx_${keys[0].prefix.split('_')[2]}...`)
+        setSelectedApiKey(keys[0].id);
       }
     } catch (err) {
-      console.error("Failed to load API keys:", err)
+      console.error("Failed to load API keys:", err);
+      setErrorMessage("Failed to load API keys");
     }
   }
 
@@ -674,7 +677,7 @@ export default function ApiDocsPage() {
                             apiKeys.map((key) => (
                               <SelectItem 
                                 key={key.id} 
-                                value={`lmdb_xxx_${key.prefix.split('_')[2]}...`}
+                                value={key.id}
                               >
                                 {key.name}
                               </SelectItem>

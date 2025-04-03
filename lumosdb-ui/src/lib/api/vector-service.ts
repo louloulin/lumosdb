@@ -27,6 +27,15 @@ export interface SimilaritySearchResult {
 }
 
 /**
+ * 文本查询参数
+ */
+export interface TextQueryParams {
+  text: string;
+  limit?: number;
+  filter?: Record<string, unknown>;
+}
+
+/**
  * 获取所有向量集合
  * @returns 所有向量集合
  */
@@ -194,6 +203,85 @@ export async function searchSimilar(
   } catch (error) {
     return {
       results: [],
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+/**
+ * 根据文本执行相似度搜索
+ * 这个方法首先将文本转换为向量，然后使用向量进行搜索
+ * 
+ * @param collectionName 集合名称
+ * @param params 查询参数，包含文本、限制数量和过滤条件
+ * @returns 相似度搜索结果
+ */
+export async function searchByText(
+  collectionName: string,
+  params: TextQueryParams
+): Promise<{ results: SimilaritySearchResult[]; error: string | null }> {
+  try {
+    const vectorClient = getVectorClient();
+    
+    // 使用SDK的文本搜索功能
+    const searchResults = await vectorClient.searchByText(collectionName, {
+      text: params.text,
+      limit: params.limit || 10,
+      filter: params.filter
+    });
+    
+    return {
+      results: searchResults.map(result => ({
+        id: result.id,
+        score: result.score,
+        metadata: result.metadata
+      })),
+      error: null
+    };
+  } catch (error) {
+    console.error('文本相似度搜索失败:', error);
+    return {
+      results: [],
+      error: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+/**
+ * 获取向量集合统计信息
+ * @param collectionName 集合名称
+ * @returns 集合统计信息
+ */
+export async function getCollectionStats(
+  collectionName: string
+): Promise<{ 
+  stats: { 
+    vectorCount: number; 
+    dimension: number; 
+    indexType: string; 
+    createdAt: string;
+    metadataFields: string[];
+  } | null; 
+  error: string | null 
+}> {
+  try {
+    const vectorClient = getVectorClient();
+    const stats = await vectorClient.getCollectionStats(collectionName);
+    
+    return {
+      stats: {
+        vectorCount: stats.vectorCount,
+        dimension: stats.dimension,
+        indexType: stats.indexType || 'default',
+        createdAt: stats.createdAt,
+        metadataFields: stats.metadataFields || []
+      },
+      error: null
+    };
+  } catch (error) {
+    console.error('获取集合统计信息失败:', error);
+    return {
+      stats: null,
       error: error instanceof Error ? error.message : String(error)
     };
   }

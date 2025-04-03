@@ -5,15 +5,15 @@
 
 declare module '@sdk' {
   export class ApiClient {
-    constructor(baseURL: string, options?: any);
+    constructor(baseURL: string, options?: Record<string, unknown>);
     get<T>(url: string): Promise<{ data: T; status: number }>;
-    post<T>(url: string, data?: any): Promise<{ data: T; status: number }>;
-    put<T>(url: string, data?: any): Promise<{ data: T; status: number }>;
+    post<T>(url: string, data?: Record<string, unknown>): Promise<{ data: T; status: number }>;
+    put<T>(url: string, data?: Record<string, unknown>): Promise<{ data: T; status: number }>;
     delete<T>(url: string): Promise<{ data: T; status: number }>;
   }
 
   export interface QueryResult {
-    rows?: any[];
+    rows?: Array<Record<string, unknown>>;
     columns?: string[];
     rowsAffected?: number;
     error?: string;
@@ -36,8 +36,8 @@ declare module '@sdk' {
 
   export class DbClient {
     constructor(apiClient: ApiClient);
-    query(sql: string, params?: any[]): Promise<QueryResult>;
-    execute(sql: string, params?: any[]): Promise<ExecuteResult>;
+    query(sql: string, params?: Array<unknown>): Promise<QueryResult>;
+    execute(sql: string, params?: Array<unknown>): Promise<ExecuteResult>;
     getTables(): Promise<string[]>;
     getTableInfo(tableName: string): Promise<TableInfo>;
     createTable(createTableSql: string): Promise<void>;
@@ -68,6 +68,20 @@ declare module '@sdk' {
     ids: string[];
   }
 
+  export interface CollectionStats {
+    vectorCount: number;
+    dimension: number;
+    indexType?: string;
+    createdAt: string;
+    metadataFields?: string[];
+  }
+
+  export interface TextSearchParams {
+    text: string;
+    limit?: number;
+    filter?: Record<string, unknown>;
+  }
+
   export class VectorClient {
     constructor(apiClient: ApiClient);
     listCollections(): Promise<VectorCollection[]>;
@@ -82,8 +96,10 @@ declare module '@sdk' {
     search(collectionName: string, options: {
       vector: number[];
       limit?: number;
-      filter?: Record<string, any>;
+      filter?: Record<string, unknown>;
     }): Promise<VectorSearchResult[]>;
+    searchByText(collectionName: string, params: TextSearchParams): Promise<VectorSearchResult[]>;
+    getCollectionStats(collectionName: string): Promise<CollectionStats>;
   }
 
   export interface HealthCheckResult {
@@ -98,13 +114,50 @@ declare module '@sdk' {
   export class HealthClient {
     constructor(apiClient: ApiClient);
     check(): Promise<HealthCheckResult>;
-    getSystemInfo(): Promise<Record<string, any>>;
+    getSystemInfo(): Promise<Record<string, unknown>>;
+  }
+
+  export interface User {
+    id: string;
+    email: string;
+    name: string;
+    role: 'admin' | 'developer' | 'viewer';
+    avatar?: string;
+    createdAt: string;
+    lastLogin?: string;
+  }
+
+  export interface LoginResult {
+    user: User;
+    token: string;
+  }
+
+  export interface ApiKey {
+    id: string;
+    name: string;
+    prefix: string;
+    createdAt: string;
+    lastUsed?: string;
+    expiresAt?: string;
+    createdBy: string;
+    permissions: Array<'read' | 'write' | 'delete'>;
+  }
+
+  export class AuthClient {
+    constructor(apiClient: ApiClient);
+    login(email: string, password: string): Promise<LoginResult>;
+    register(data: { email: string; password: string; name: string }): Promise<LoginResult>;
+    getCurrentUser(): Promise<User | null>;
+    getApiKeys(): Promise<ApiKey[]>;
+    createApiKey(data: { name: string; permissions: Array<'read' | 'write' | 'delete'> }): Promise<ApiKey>;
+    deleteApiKey(id: string): Promise<void>;
   }
 
   export class LumosDBClient {
     db: DbClient;
     vector: VectorClient;
     health: HealthClient;
+    auth: AuthClient;
     
     constructor(baseURL: string, apiKey?: string);
     setApiKey(apiKey: string): void;
@@ -114,4 +167,5 @@ declare module '@sdk' {
   export * from '@sdk/types/db';
   export * from '@sdk/types/vector';
   export * from '@sdk/types/health';
+  export * from '@sdk/types/auth';
 } 

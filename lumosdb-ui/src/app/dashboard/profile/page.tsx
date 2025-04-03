@@ -10,14 +10,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AlertCircle, Key, Loader, Settings, User } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { getApiKeys, createApiKey, deleteApiKey, User as UserType } from "@/lib/api/auth"
+import { User as UserType } from "@sdk"
+import * as authService from "@/lib/api/auth-service"
 
 // 模拟更新个人资料API
 const updateProfile = async (data: { name: string; email: string }): Promise<UserType> => {
   return new Promise((resolve, reject) => {
     setTimeout(() => {
       // 获取当前认证上下文中的用户
-      const currentUser = window?.localStorage.getItem('currentUser');
+      const currentUser = window?.localStorage.getItem('lumos_auth_user');
       if (!currentUser) {
         reject(new Error('User not found'));
         return;
@@ -32,7 +33,7 @@ const updateProfile = async (data: { name: string; email: string }): Promise<Use
       };
       
       // 保存更新后的用户信息到localStorage
-      window.localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      window.localStorage.setItem('lumos_auth_user', JSON.stringify(updatedUser));
       
       resolve(updatedUser);
     }, 800);
@@ -55,7 +56,8 @@ const changePassword = async (currentPassword: string, newPassword: string): Pro
 
 // 获取用户API密钥
 const getUserApiKeys = async () => {
-  return getApiKeys();
+  const result = await authService.getApiKeys();
+  return result.keys;
 };
 
 export default function ProfilePage() {
@@ -149,14 +151,23 @@ export default function ProfilePage() {
     setNewlyCreatedKey("")
 
     try {
-      const { apiKey, secret } = await createApiKey({
+      const result = await authService.createApiKey({
         name: newKeyName,
         permissions: ['read', 'write']
-      })
-      setApiKeys([...apiKeys, apiKey])
-      setNewKeyName("")
-      setNewlyCreatedKey(secret) // Store the full key to display to the user
-      setSuccess("API key created successfully")
+      });
+      
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      
+      if (result.key) {
+        setApiKeys([...apiKeys, result.key]);
+        setNewKeyName("");
+        // 注意：在实际环境中，这里应显示API密钥的secret部分
+        setNewlyCreatedKey(result.key.id);
+        setSuccess("API key created successfully");
+      }
     } catch (err) {
       console.error("Failed to create API key:", err)
       setError("Failed to create API key")
@@ -171,9 +182,17 @@ export default function ProfilePage() {
     setSuccess("")
 
     try {
-      await deleteApiKey(keyId)
-      setApiKeys(apiKeys.filter(key => key.id !== keyId))
-      setSuccess("API key deleted successfully")
+      const result = await authService.deleteApiKey(keyId);
+      
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      
+      if (result.success) {
+        setApiKeys(apiKeys.filter(key => key.id !== keyId));
+        setSuccess("API key deleted successfully");
+      }
     } catch (err) {
       console.error("Failed to delete API key:", err)
       setError("Failed to delete API key")
