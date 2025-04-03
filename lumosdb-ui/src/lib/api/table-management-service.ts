@@ -95,37 +95,36 @@ export async function getTables(database?: string): Promise<TableInfo[]> {
       database: database || 'main'
     });
     
-    // 处理不同的返回数据格式
+    // 用于存储基本表名列表的临时变量
+    let basicTableList: TableInfo[] = [];
+    
+    // 处理不同的返回数据格式来获取基本表名列表
     
     // 格式0: 直接返回数组 [string, string, ...]
     if (Array.isArray(result)) {
       console.log('直接返回的表数组', result);
-      // 将字符串数组转换为TableInfo对象数组
-      return result.map((tableName: string) => ({
+      basicTableList = result.map((tableName: string) => ({
         name: tableName,
         rowCount: 0,
         sizeBytes: 0,
         schema: []
       }));
     }
-    
     // 格式1: { success: true, data: { tables: string[] } }
-    if (result && typeof result === 'object' && 'success' in result && 
+    else if (result && typeof result === 'object' && 'success' in result && 
         result.success && 'data' in result && 
         result.data && typeof result.data === 'object' && 
         'tables' in result.data && Array.isArray(result.data.tables)) {
       console.log('使用API新格式返回的表数据', result.data.tables);
-      // 将字符串数组转换为TableInfo对象数组
-      return result.data.tables.map((tableName: string) => ({
+      basicTableList = result.data.tables.map((tableName: string) => ({
         name: tableName,
         rowCount: 0,
         sizeBytes: 0,
         schema: []
       }));
     }
-    
     // 格式2: { tables: SDKTableInfo[] } 或 { tables: string[] }
-    if (result && typeof result === 'object' && 'tables' in result) {
+    else if (result && typeof result === 'object' && 'tables' in result) {
       if (!result.tables) {
         return [];
       }
@@ -133,18 +132,16 @@ export async function getTables(database?: string): Promise<TableInfo[]> {
       // 检查tables是否为字符串数组而不是对象数组
       if (Array.isArray(result.tables) && result.tables.length > 0 && typeof result.tables[0] === 'string') {
         console.log('表数据是字符串数组', result.tables);
-        // 将字符串数组转换为TableInfo对象数组
-        return (result.tables as string[]).map((tableName: string) => ({
+        basicTableList = (result.tables as string[]).map((tableName: string) => ({
           name: tableName,
           rowCount: 0,
           sizeBytes: 0,
           schema: []
         }));
       }
-      
       // 标准格式处理
-      if (Array.isArray(result.tables)) {
-        return result.tables.map((table: any) => ({
+      else if (Array.isArray(result.tables)) {
+        basicTableList = result.tables.map((table: any) => ({
           name: table.name,
           rowCount: table.row_count || 0,
           sizeBytes: table.size_bytes || 0,
@@ -161,27 +158,50 @@ export async function getTables(database?: string): Promise<TableInfo[]> {
         }));
       }
     }
-    
     // 未识别的格式
-    console.error('未知的API返回格式', result);
-    // 尝试将未知格式转换为表名数组
-    if (result && typeof result === 'object') {
-      // 尝试从对象中提取可能的表数组
-      const possibleTables = Object.values(result).find(val => Array.isArray(val));
-      if (possibleTables && Array.isArray(possibleTables)) {
-        console.log('从未知格式中提取出可能的表数组', possibleTables);
-        return possibleTables.map((item: unknown) => ({
-          name: typeof item === 'string' ? item : (
-            typeof item === 'object' && item !== null && 'name' in item ? 
-            String((item as {name: unknown}).name) : String(item)
-          ),
-          rowCount: 0,
-          sizeBytes: 0,
-          schema: []
-        }));
+    else {
+      console.error('未知的API返回格式', result);
+      // 尝试将未知格式转换为表名数组
+      if (result && typeof result === 'object') {
+        // 尝试从对象中提取可能的表数组
+        const possibleTables = Object.values(result).find(val => Array.isArray(val));
+        if (possibleTables && Array.isArray(possibleTables)) {
+          console.log('从未知格式中提取出可能的表数组', possibleTables);
+          basicTableList = possibleTables.map((item: unknown) => ({
+            name: typeof item === 'string' ? item : (
+              typeof item === 'object' && item !== null && 'name' in item ? 
+              String((item as {name: unknown}).name) : String(item)
+            ),
+            rowCount: 0,
+            sizeBytes: 0,
+            schema: []
+          }));
+        }
       }
     }
-    return [];
+    
+    if (basicTableList.length === 0) {
+      return [];
+    }
+    
+    console.log('获取到基本表列表:', basicTableList);
+    
+    // 为每个表获取详细信息
+    const detailedTables = await Promise.all(
+      basicTableList.map(async (table) => {
+        try {
+          console.log(`正在获取表 ${table.name} 的详细信息...`);
+          const tableInfo = await getTableInfo(table.name, database);
+          return tableInfo || table; // 如果获取失败，保留基本信息
+        } catch (error) {
+          console.error(`获取表 ${table.name} 详细信息失败:`, error);
+          return table; // 出错时保留基本信息
+        }
+      })
+    );
+    
+    console.log('获取到详细表信息:', detailedTables);
+    return detailedTables.filter(Boolean) as TableInfo[];
     
   } catch (error) {
     const apiError = handleError(error);
