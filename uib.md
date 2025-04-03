@@ -58,14 +58,15 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
    - 实现 `/src/lib/api/sdk-client.ts`，封装 SDK 初始化和管理
    - 为各功能模块创建相应的服务类
 
-2. **替换现有 Mock API** ⚠️ (部分完成)
+2. **替换现有 Mock API** ✅
    - SQL 模块 (`sql.ts`) → 对接 `DbClient` ✅
    - 向量模块 (`vectors.ts`) → 对接 `VectorClient` ✅
    - 健康检查模块 → 对接 `HealthClient` ✅
    - 认证模块 (`auth.ts`) → 对接认证相关 API ✅
    - 实时数据模块 → 对接 WebSocket 或轮询机制 ✅
+   - 数据传输模块 → 对接数据导入导出API ✅
 
-### 4.3 具体功能对接 ⚠️ (部分完成)
+### 4.3 具体功能对接 ✅
 
 1. **SQL 编辑器对接** ✅
    - 查询执行: 替换 mock 的 `executeSql` 为 SDK 的 `db.query` ✅
@@ -84,13 +85,18 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
    - 登录验证: 使用 SDK 中的认证方法 ✅
    - 权限控制: 根据用户角色控制 UI 功能访问 ✅
 
+5. **数据导入导出** ✅
+   - 支持多种格式的数据导入导出
+   - 文件上传和下载处理
+   - 进度跟踪和错误处理
+
 ### 4.4 错误处理与状态管理 ✅
 
 1. **统一错误处理** ✅
    - 在 API 服务层捕获并分类处理错误
    - 实现友好的错误展示机制
 
-2. **加载状态管理** ⏳
+2. **加载状态管理** ✅
    - 实现统一的加载状态指示
    - 优化用户体验
 
@@ -133,6 +139,7 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 | 向量模块对接 | 向量存储、检索功能 | 3天 | ✅ 已完成 |
 | 用户认证对接 | 登录、权限控制 | 2天 | ✅ 已完成 |
 | 实时功能对接 | 实时数据更新 | 3天 | ✅ 已完成 |
+| 数据传输对接 | 数据导入导出功能 | 3天 | ✅ 已完成 |
 | 测试与优化 | 全面测试、性能优化 | 5天 | ⚠️ 部分完成 |
 | 部署与文档 | 部署配置、使用文档 | 2天 | ⏳ 未开始 |
 
@@ -176,6 +183,7 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 认证服务 (`/src/lib/api/auth-service.ts`)
 - ✅ 错误处理机制 (`/src/lib/api/error-handler.ts`)
 - ✅ 缓存服务 (`/src/lib/cache-service.ts`)
+- ✅ 数据传输服务 (`/src/lib/api/data-transfer-service.ts`)
 
 ### 10.3 测试用例
 - ✅ SQL服务测试 (`/src/lib/api/__tests__/sql-service.test.ts`)
@@ -183,32 +191,40 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 错误处理机制测试 (`/src/lib/api/__tests__/error-handler.test.ts`)
 - ✅ 向量服务测试 (`/src/lib/api/__tests__/vector-service.test.ts`)
 - ✅ 认证服务测试 (`/src/lib/api/__tests__/auth-service.test.ts`)
+- ✅ 加载状态管理测试 (`/src/contexts/__tests__/loading-context.test.tsx`)
+- ✅ 加载API钩子测试 (`/src/lib/hooks/__tests__/use-loading-api.test.tsx`)
+- ✅ 数据传输服务测试 (`/src/lib/api/__tests__/data-transfer-service.test.ts`)
 
-### 10.4 近期完成功能
+### 10.4 新增功能
+- ✅ 加载状态上下文 (`/src/contexts/loading-context.tsx`)
+- ✅ 加载状态指示器组件 (`/src/components/ui/loading-indicator.tsx`)
+- ✅ API请求加载状态钩子 (`/src/lib/hooks/use-loading-api.ts`)
 - ✅ 向量相似度搜索功能 (文本查询)
 - ✅ 向量集合统计信息查询
 - ✅ 模块化SDK类型定义
 - ✅ 用户认证与API密钥管理
 - ✅ 废弃旧的mock实现并提供平滑迁移方案
+- ✅ 实时数据服务实现
+- ✅ 数据传输模块 (支持多种格式导入导出)
 
 ## 11. 下一步工作计划
 
-1. **实现实时数据功能**
-   - 评估WebSocket和轮询两种方案
-   - 实现数据变更通知机制
-   - 创建实时服务 (`/src/lib/api/realtime-service.ts`)
-
-2. **实现加载状态管理**
-   - 创建加载状态上下文
-   - 实现全局加载指示器组件
-   - 集成API请求加载状态
-
-3. **完善测试**
-   - 添加集成测试
+1. **完善集成测试**
+   - 实现前端与后端的完整交互测试
    - 添加端到端测试
-   - 修复测试中的TypeScript错误
+   - 模拟真实用户场景进行测试
 
-4. **部署与环境配置**
-   - 完善开发环境配置
-   - 准备测试环境部署
-   - 配置生产环境参数
+2. **环境配置**
+   - 创建开发/测试/生产三套环境配置
+   - 设置环境变量管理策略
+   - 实现简化的本地开发环境
+
+3. **部署流程**
+   - 配置CI/CD流程
+   - 建立自动化部署策略
+   - 完善部署文档和指南
+
+4. **文档更新**
+   - 更新API文档
+   - 编写用户使用指南
+   - 为开发者提供集成文档

@@ -4,10 +4,13 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/toaster";
-
-// 导入国际化提供者
 import { I18nProvider } from "@/i18n/provider";
 import { SDKInitializer } from '@/components/sdk-initializer';
+import { AuthProvider } from "@/contexts/auth-context";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster as SonnerToaster } from "sonner";
+import { LoadingProvider } from "@/contexts/loading-context";
+import { GlobalLoadingIndicator } from "@/components/ui/loading-indicator";
 
 const fontSans = Inter({
   subsets: ["latin"],
@@ -47,7 +50,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="zh" suppressHydrationWarning>
       <head>
         <link rel="apple-touch-icon" href="/icons/icon-192x192.png" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -67,8 +70,16 @@ export default function RootLayout({
         >
           <SDKInitializer />
           <I18nProvider>
-            {children}
-            <Toaster />
+            <AuthProvider>
+              <LoadingProvider>
+                <TooltipProvider>
+                  {children}
+                  <Toaster />
+                  <SonnerToaster position="top-right" />
+                  <GlobalLoadingIndicator />
+                </TooltipProvider>
+              </LoadingProvider>
+            </AuthProvider>
           </I18nProvider>
         </ThemeProvider>
       </body>
