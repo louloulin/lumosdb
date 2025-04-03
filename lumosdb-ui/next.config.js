@@ -13,6 +13,8 @@ const withPWA = (() => {
   }
 })()
 
+const path = require('path');
+
 const nextConfig = {
   eslint: {
     // Warning: This allows production builds to successfully complete even if
@@ -54,6 +56,13 @@ const nextConfig = {
         "os": false,
       }
     }
+    
+    // 配置SDK相对路径解析
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@sdk': path.resolve(__dirname, '../clients/ts/src'),
+    };
+    
     return config
   },
 }

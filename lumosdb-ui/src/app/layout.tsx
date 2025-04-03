@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 
 // 导入国际化提供者
 import { I18nProvider } from "@/i18n/provider";
+import { SDKInitializer } from '@/components/sdk-initializer';
 
 const fontSans = Inter({
   subsets: ["latin"],
@@ -64,6 +65,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          <SDKInitializer />
           <I18nProvider>
             {children}
             <Toaster />
