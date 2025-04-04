@@ -195,6 +195,7 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 备份恢复服务 (`/src/lib/api/backup-restore-service.ts`)
 - ✅ 分析服务 (`/src/lib/api/analytics-service.ts`)
 - ✅ 仪表盘服务 (`/src/lib/api/dashboard-service.ts`)
+- ✅ DuckDB数据集服务 (`/src/lib/api/duckdb-service.ts`)
 
 ### 10.3 测试用例
 - ✅ SQL服务测试 (`/src/lib/api/__tests__/sql-service.test.ts`)
@@ -210,10 +211,16 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 分析服务测试 (`/src/lib/api/__tests__/analytics-service.test.ts`)
 - ✅ 仪表盘服务测试 (`/src/lib/api/__tests__/dashboard-service.test.ts`)
 - ✅ 仪表盘删除功能测试 (`/scripts/test-dashboard-api.ts`) 用于API集成测试
+- ✅ DuckDB数据集服务测试 (`/src/lib/api/__tests__/duckdb-service.test.ts`)
 
 ### 10.4 UI组件
 - ✅ 仪表盘列表组件 (`/src/components/dashboard/DashboardList.tsx`)
 - ✅ 仪表盘页面 (`/src/app/dashboards/page.tsx`)
+- ✅ DuckDB数据集列表组件 (`/src/components/duckdb/DuckDBDatasetList.tsx`)
+- ✅ DuckDB数据集创建表单 (`/src/components/duckdb/CreateDuckDBDatasetForm.tsx`)
+- ✅ 文件上传组件 (`/src/components/ui/file-upload.tsx`)
+- ✅ 数据集页面 (`/src/app/analytics/datasets/page.tsx`)
+- ✅ 创建数据集页面 (`/src/app/analytics/datasets/new/page.tsx`)
 
 ### 10.5 模拟实现
 - ✅ 仪表盘模拟服务 (`/src/lib/api/mock/dashboard-mock.ts`) 提供仪表盘CRUD操作的本地模拟
@@ -233,8 +240,20 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 备份恢复功能 (创建备份、恢复备份、查看备份历史、导出备份、验证备份)
 - ✅ 数据分析功能 (执行分析查询、生成统计报告、异常检测)
 - ✅ 仪表盘管理功能 (创建、更新、删除仪表盘，添加、编辑和删除图表部件，分享仪表盘)
+- ✅ DuckDB数据集管理功能 (创建、查询、导出、删除数据集；支持CSV、JSON、Parquet文件导入；支持SQL查询创建数据集；支持数据集合并)
 
-## 11. 下一步工作计划
+## 11. 最近更新 (2024年4月5日)
+
+### DuckDB集成
+- ✅ 添加了DuckDB数据集管理服务，支持与内嵌DuckDB引擎的交互
+- ✅ 实现了数据集创建、查询和管理的UI组件和页面
+- ✅ 添加了文件上传组件，支持CSV、JSON和Parquet文件导入
+- ✅ 支持通过SQL查询创建衍生数据集
+- ✅ 实现了数据集合并、导出和详细信息查看功能
+- ✅ 添加了用于格式化文件大小和日期的工具函数
+- ✅ 为DuckDB服务编写了完善的单元测试
+
+## 12. 下一步工作计划
 
 1. **完善集成测试**
    - 实现前端与后端的完整交互测试
@@ -256,7 +275,7 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
    - 编写用户使用指南
    - 为开发者提供集成文档
 
-## 12. 最近更新内容
+## 13. 最近更新内容
 
 ### 2024-04-04更新
 1. **仪表盘功能改进**：
