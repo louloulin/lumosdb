@@ -1,5 +1,7 @@
 import { LumosDBClient } from '@sdk';
+import type { DbClient } from '@sdk';
 import { API_BASE_URL } from '../api-config';
+import { extendDbClient } from './sdk-extension';
 
 /**
  * SDK客户端单例
@@ -73,7 +75,13 @@ class SDKClientSingleton {
 export const sdkClient = SDKClientSingleton.getInstance();
 
 // 导出便捷函数，用于在组件中直接获取各种客户端
-export const getDbClient = () => sdkClient.getClient().db;
+export function getDbClient(): DbClient {
+  console.debug('获取数据库客户端');
+  const client = sdkClient.getClient();
+  console.debug('SDK客户端实例化成功，获取数据库引用');
+  return client.db;
+}
+
 export const getVectorClient = () => sdkClient.getClient().vector;
 export const getHealthClient = () => sdkClient.getClient().health;
 
@@ -88,6 +96,15 @@ export const initializeSDK = () => {
         sdkClient.initialize(storedApiKey);
       } else {
         sdkClient.initialize();
+      }
+      
+      // 应用SDK扩展
+      try {
+        const db = sdkClient.getClient().db;
+        extendDbClient(db);
+        console.log('已应用SDK扩展，增强了错误处理和参数验证');
+      } catch (extensionError) {
+        console.error('应用SDK扩展失败:', extensionError);
       }
     }
   } catch (error) {

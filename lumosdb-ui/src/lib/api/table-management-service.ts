@@ -4,6 +4,23 @@ import type { DbClient } from '@sdk';
 import { dropTable } from './sql-service';
 
 /**
+ * 表名处理工具函数
+ */
+// 为SQL查询添加引号的表名
+function getSqlSafeTableName(tableName: string): string {
+  return tableName.includes('"') ? tableName : `"${tableName}"`;
+}
+
+// 用于SDK参数的原始表名
+function getSdkSafeTableName(tableName: string): string {
+  // 如果表名已经包含引号，则移除引号
+  if (tableName.startsWith('"') && tableName.endsWith('"')) {
+    return tableName.substring(1, tableName.length - 1);
+  }
+  return tableName;
+}
+
+/**
  * 表管理服务接口
  */
 
@@ -232,28 +249,79 @@ export async function getTables(database?: string): Promise<TableInfo[]> {
  * @param database 数据库名称
  * @returns 表详细信息或错误信息
  */
-export async function getTableInfo(tableName: string, database?: string): Promise<TableInfo | null> {
+export async function getTableInfo(tableName: any, database?: string): Promise<TableInfo | null> {
   try {
+    // 确保tableName是字符串
+    if (typeof tableName !== 'string') {
+      console.error('错误: getTableInfo 收到非字符串表名:', tableName);
+      if (tableName && typeof tableName === 'object') {
+        if ('name' in tableName) {
+          console.log('尝试从对象中提取name属性作为表名');
+          tableName = String(tableName.name);
+        } else if ('table' in tableName) {
+          console.log('尝试从对象中提取table属性作为表名');
+          tableName = String(tableName.table);
+        } else {
+          console.error('无法从对象中提取表名');
+          return null;
+        }
+      } else {
+        console.error('无法处理的表名类型');
+        return null;
+      }
+    }
+    
+    console.log(`开始获取表信息 - 原始表名: "${tableName}"`);
     const client = sdkClient.getClient();
     const db = client.db as DbClient & {
       getTableInfo(params: GetTableInfoParams): Promise<SDKTableInfoResult>;
     };
     
-    // 确保表名使用双引号包裹，避免特殊字符问题
-    const safeTableName = tableName.includes('"') ? tableName : `"${tableName}"`;
+    // 使用没有引号的原始表名作为SDK参数
+    const sdkTableName = getSdkSafeTableName(tableName);
+    const sqlTableName = getSqlSafeTableName(tableName);
+    
+    console.log(`表名处理: 
+      原始表名: "${tableName}" 
+      SDK用表名: "${sdkTableName}" 
+      SQL用表名: ${sqlTableName}`);
     
     try {
+      console.log(`调用SDK getTableInfo - 使用表名: "${sdkTableName}"`);
       const result = await db.getTableInfo({
-        table: safeTableName,
+        table: sdkTableName,
         database: database || 'main'
       });
       
-      if (!result.table) {
-        console.error(`表 ${tableName} 不存在或无法访问`);
+      console.log(`SDK返回结果:`, result);
+      
+      // 检查返回结果是否有效 - 修复结构不匹配的问题
+      // SDK可能直接返回表信息对象，而不是包含table属性的对象
+      if (!result) {
+        console.error(`表 ${tableName} 不存在或无法访问 - 返回结果为空`);
         return null;
       }
       
-      const table = result.table;
+      // 判断返回值类型：可能是{table: {name, columns}}或直接是{name, columns}
+      let table: any = null;
+      
+      // 情况1: 返回格式为 {table: {name, columns}}
+      if (result.table && result.table.name) {
+        table = result.table;
+        console.log(`使用result.table结构，表名: ${table.name}`);
+      } 
+      // 情况2: 返回格式为 {name, columns}
+      else if (result.name) {
+        table = result;
+        console.log(`使用直接返回结构，表名: ${table.name}`);
+      }
+      // 无法识别的格式
+      else {
+        console.error(`表 ${tableName} 返回了无法识别的结构:`, result);
+        return null;
+      }
+      
+      console.log(`成功获取表信息: ${table.name}, 列数: ${table.columns?.length || 0}`);
       
       return {
         name: table.name,
@@ -268,7 +336,8 @@ export async function getTableInfo(tableName: string, database?: string): Promis
           default: col.default_value
         })) : [],
         created: table.created_at,
-        lastModified: table.last_modified
+        lastModified: table.last_modified,
+        accessible: true
       };
     } catch (innerError) {
       // 处理特定的表访问错误
@@ -276,6 +345,8 @@ export async function getTableInfo(tableName: string, database?: string): Promis
       
       // 根据错误类型提供更详细的错误信息
       const apiError = handleError(innerError);
+      console.error(`错误详情: 类型=${apiError.type}, 消息=${apiError.message}`);
+      
       if (apiError.message.includes("no such table")) {
         // 表不存在错误
         console.error(`表 ${tableName} 不存在`);
@@ -342,9 +413,12 @@ export async function truncateTable(tableName: string, database?: string): Promi
       execute(params: ExecuteSqlParams): Promise<{ rowsAffected: number; error?: string }>;
     };
     
+    // 为SQL语句使用带引号的表名
+    const sqlTableName = getSqlSafeTableName(tableName);
+    
     // 使用SDK执行清空表的SQL
     const result = await db.execute({
-      sql: `DELETE FROM ${tableName}`,
+      sql: `DELETE FROM ${sqlTableName}`,
       database: database || 'main',
       params: []
     });
