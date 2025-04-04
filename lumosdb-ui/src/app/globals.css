@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "../styles/theme-animation.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -212,7 +213,7 @@
   
   /* 添加自定义主题过渡效果 */
   *, *::before, *::after {
-    transition-property: background-color, border-color, color, fill, stroke;
+    transition-property: background-color, border-color, color, fill, stroke, box-shadow;
     transition-duration: var(--transition-duration);
     transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   }

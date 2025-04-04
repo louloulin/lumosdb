@@ -1,0 +1,93 @@
+/* 主题动画过渡效果 */
+
+@keyframes theme-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes theme-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes theme-slide-up {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes theme-scale {
+  from {
+    transform: scale(0.95);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+/* 特定元素动画 */
+.theme-switcher-item {
+  animation: theme-slide-up 0.3s ease-out forwards;
+}
+
+/* 主题过渡效果 - 用于全局颜色变化 */
+.theme-transition * {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 300ms;
+}
+
+/* 按主题特定样式 */
+:root[class="light"] .dark-only {
+  display: none;
+}
+
+:root[class="dark"] .light-only {
+  display: none;
+}
+
+/* 主题切换器样式 */
+.theme-switch-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.theme-switch-button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background: radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0) 70%);
+  transform: translate(-50%, -50%) scale(0);
+  transition: transform 0.5s;
+}
+
+.theme-switch-button:active::after {
+  transform: translate(-50%, -50%) scale(1.5);
+}
+
+/* 主题颜色过渡 */
+.dark .theme-transition-bg {
+  background-color: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(12px);
+}
+
+.light .theme-transition-bg {
+  background-color: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(12px);
+} 

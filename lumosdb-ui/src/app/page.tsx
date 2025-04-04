@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ResponsiveContainer, MobileOnly, TabletOnly, DesktopOnly } from "@/components/responsive-container";
+// @ts-ignore
 import { motion } from "framer-motion";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 
