@@ -72,6 +72,25 @@ export async function getDashboards(): Promise<Dashboard[]> {
 }
 
 /**
+ * Search dashboards by query string
+ * @param query The search query string
+ * @returns Promise resolving to a list of matching dashboards
+ */
+export async function searchDashboards(query: string): Promise<Dashboard[]> {
+  const client = sdkClient.getClient();
+  
+  try {
+    // SDK call to search dashboards
+    // @ts-expect-error - LumosDBClient has executeRequest method
+    const response = await client.executeRequest('GET', `/api/dashboards/search?q=${encodeURIComponent(query)}`);
+    return (response.data || []) as Dashboard[];
+  } catch (error) {
+    const apiError = handleError(error);
+    throw apiError;
+  }
+}
+
+/**
  * Get a specific dashboard by ID
  * @param id The ID of the dashboard to retrieve
  * @returns Promise resolving to the dashboard

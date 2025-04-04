@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { PlusCircle, BarChart, Share2, Trash2, Edit } from 'lucide-react';
+import { PlusCircle, BarChart, Share2, Trash2, Edit, Search } from 'lucide-react';
 import { LoadingIndicator } from '@/components/ui/loading-indicator';
 import { useToast } from '@/components/ui/use-toast';
 import { getDashboards, Dashboard, deleteDashboard } from '@/lib/api/dashboard-service';
 import { getUserFriendlyErrorMessage, ApiError } from '@/lib/api/error-handler';
 import { useLoadingApi } from '@/lib/hooks/use-loading-api';
 import { useLoading } from '@/contexts/loading-context';
+import { DashboardSearch } from './DashboardSearch';
 
 /**
  * 仪表盘列表组件
@@ -16,6 +17,8 @@ import { useLoading } from '@/contexts/loading-context';
  */
 export function DashboardList() {
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
+  const [filteredDashboards, setFilteredDashboards] = useState<Dashboard[]>([]);
+  const [isSearchActive, setIsSearchActive] = useState(false);
   const router = useRouter();
   const { toast } = useToast();
   const { isModuleLoading } = useLoading();
@@ -37,11 +40,19 @@ export function DashboardList() {
     loadDashboards();
   }, []);
 
+  // 当原始仪表盘数据变化时，如果没有进行搜索，则更新过滤后的列表
+  useEffect(() => {
+    if (!isSearchActive) {
+      setFilteredDashboards(dashboards);
+    }
+  }, [dashboards, isSearchActive]);
+
   // 获取仪表盘数据
   const loadDashboards = async () => {
     try {
       const data = await dashboardsApi.execute();
       setDashboards(data);
+      setFilteredDashboards(data);
     } catch (error) {
       toast({
         title: '加载仪表盘失败',
@@ -81,6 +92,18 @@ export function DashboardList() {
     }
   };
 
+  // 处理搜索结果
+  const handleSearchResults = (results: Dashboard[]) => {
+    setIsSearchActive(true);
+    setFilteredDashboards(results);
+  };
+
+  // 重置搜索
+  const handleResetSearch = () => {
+    setIsSearchActive(false);
+    setFilteredDashboards(dashboards);
+  };
+
   // 显示加载状态
   const loading = isModuleLoading('dashboards:list');
   if (loading && dashboards.length === 0) {
@@ -91,6 +114,10 @@ export function DashboardList() {
     );
   }
 
+  // 计算要显示的仪表盘
+  const displayDashboards = filteredDashboards;
+  const noSearchResults = isSearchActive && displayDashboards.length === 0;
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -100,8 +127,22 @@ export function DashboardList() {
           新建仪表盘
         </Button>
       </div>
+      
+      <div className="w-full max-w-md mx-auto mb-6">
+        <DashboardSearch onResultsChange={handleSearchResults} />
+        {isSearchActive && (
+          <div className="flex justify-between mt-2 text-sm">
+            <span className="text-muted-foreground">
+              {noSearchResults ? '没有找到匹配的仪表盘' : `找到 ${displayDashboards.length} 个仪表盘`}
+            </span>
+            <Button variant="link" size="sm" onClick={handleResetSearch} className="h-auto p-0">
+              显示全部
+            </Button>
+          </div>
+        )}
+      </div>
 
-      {dashboards.length === 0 ? (
+      {!isSearchActive && dashboards.length === 0 ? (
         <Card className="bg-muted/40">
           <CardContent className="pt-6 text-center">
             <div className="mx-auto my-4 flex h-20 w-20 items-center justify-center rounded-full bg-muted">
@@ -117,9 +158,24 @@ export function DashboardList() {
             </Button>
           </CardContent>
         </Card>
+      ) : noSearchResults ? (
+        <Card className="bg-muted/40">
+          <CardContent className="pt-6 text-center">
+            <div className="mx-auto my-4 flex h-20 w-20 items-center justify-center rounded-full bg-muted">
+              <Search className="h-10 w-10 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold">没有找到匹配的仪表盘</h3>
+            <p className="mt-2 text-sm text-muted-foreground">
+              尝试使用不同的搜索词，或查看所有仪表盘。
+            </p>
+            <Button onClick={handleResetSearch} className="mt-4">
+              显示全部仪表盘
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {dashboards.map((dashboard) => (
+          {displayDashboards.map((dashboard) => (
             <Card key={dashboard.id} className="overflow-hidden">
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg font-semibold truncate" title={dashboard.name}>

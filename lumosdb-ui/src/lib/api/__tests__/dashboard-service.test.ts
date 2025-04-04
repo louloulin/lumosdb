@@ -9,6 +9,7 @@ import {
   updateWidget,
   deleteWidget,
   shareDashboard,
+  searchDashboards,
   Dashboard,
   DashboardWidget
 } from '../dashboard-service';
@@ -91,6 +92,54 @@ describe('Dashboard Service', () => {
       await expect(getDashboards()).rejects.toEqual({
         code: 'test_error',
         message: 'Failed to get dashboards',
+        details: {}
+      });
+      
+      expect(handleError).toHaveBeenCalledWith(error);
+    });
+  });
+
+  describe('searchDashboards', () => {
+    it('should return matching dashboards when successful', async () => {
+      // 模拟搜索结果
+      const mockSearchResults = [
+        { ...mockDashboard, name: '销售分析', id: '1' },
+        { ...mockDashboard, name: '销售预测', id: '2' }
+      ];
+      
+      // 模拟成功返回
+      mockExecuteRequest.mockResolvedValueOnce({
+        data: mockSearchResults
+      });
+
+      const result = await searchDashboards('销售');
+      
+      expect(mockExecuteRequest).toHaveBeenCalledWith('GET', '/api/dashboards/search?q=%E9%94%80%E5%94%AE');
+      expect(result).toEqual(mockSearchResults);
+      expect(result.length).toBe(2);
+    });
+
+    it('should handle empty search results', async () => {
+      // 模拟空结果
+      mockExecuteRequest.mockResolvedValueOnce({
+        data: []
+      });
+
+      const result = await searchDashboards('不存在的仪表盘');
+      
+      expect(mockExecuteRequest).toHaveBeenCalledWith('GET', '/api/dashboards/search?q=%E4%B8%8D%E5%AD%98%E5%9C%A8%E7%9A%84%E4%BB%AA%E8%A1%A8%E7%9B%98');
+      expect(result).toEqual([]);
+      expect(result.length).toBe(0);
+    });
+
+    it('should throw error when search request fails', async () => {
+      // 模拟请求失败
+      const error = new Error('Search failed');
+      mockExecuteRequest.mockRejectedValueOnce(error);
+
+      await expect(searchDashboards('test')).rejects.toEqual({
+        code: 'test_error',
+        message: 'Search failed',
         details: {}
       });
       
