@@ -1,9 +1,3 @@
-[workspace]
-members = [
-    "clients/rust",
-    "clients/validation",
-]
-
 [env]
 CXXFLAGS = "-Wno-missing-template-arg-list-after-template-kw"
 
@@ -11,4 +5,4 @@ CXXFLAGS = "-Wno-missing-template-arg-list-after-template-kw"
 rustflags = ["-C", "link-arg=-Wno-missing-template-arg-list-after-template-kw"]
 
 [build]
-rustflags = ["-C", "link-args=-Wno-missing-template-arg-list-after-template-kw"]
+rustflags = ["-C", "link-args=-Wno-missing-template-arg-list-after-template-kw"] 
