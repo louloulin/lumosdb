@@ -14,6 +14,7 @@ const withPWA = (() => {
 })()
 
 const path = require('path');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 
 const nextConfig = {
   eslint: {
@@ -62,6 +63,14 @@ const nextConfig = {
       ...config.resolve.alias,
       '@sdk': path.resolve(__dirname, '../clients/ts/src'),
     };
+    
+    // 添加MiniCssExtractPlugin插件
+    config.plugins.push(
+      new MiniCssExtractPlugin({
+        filename: 'static/css/[name].[contenthash:8].css',
+        chunkFilename: 'static/css/[name].[contenthash:8].chunk.css',
+      })
+    );
     
     return config
   },

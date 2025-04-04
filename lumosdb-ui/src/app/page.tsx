@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { ResponsiveContainer, MobileOnly, TabletOnly, DesktopOnly } from "@/components/responsive-container";
 import { motion } from "framer-motion";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 
 // 动画变体定义
 const containerVariants = {
@@ -50,6 +51,11 @@ export default function Home() {
   return (
     <section className="w-full py-12 md:py-24 lg:py-32 overflow-hidden" style={backgroundPattern}>
       <div className="container px-4 md:px-6 relative">
+        {/* 主题切换按钮 */}
+        <div className="absolute right-4 top-4 z-10">
+          <ThemeSwitcher />
+        </div>
+        
         {/* 背景装饰 */}
         <div className="absolute top-40 -left-32 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl" />
         <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl" />
