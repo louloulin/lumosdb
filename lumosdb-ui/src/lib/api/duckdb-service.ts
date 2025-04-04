@@ -3,9 +3,40 @@
  * Provides specific operations for DuckDB analytics engine in LumosDB
  */
 
-import { sdkClient } from './sdk-client';
 import { handleError, getUserFriendlyErrorMessage } from './error-handler';
 import { AnalyticsResult } from './analytics-service';
+import axios from 'axios';
+import { API_BASE_URL } from '../api-config';
+
+// Helper function to make API requests since LumosDBClient doesn't have executeRequest
+async function apiRequest(method: string, endpoint: string, data?: unknown) {
+  // Get API key if available
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  try {
+    if (typeof window !== 'undefined') {
+      const storedApiKey = localStorage.getItem('lumos_api_key');
+      if (storedApiKey) {
+        headers['Authorization'] = `Bearer ${storedApiKey}`;
+      }
+    }
+  } catch (error) {
+    console.warn('Could not retrieve API key from localStorage:', error);
+  }
+  
+  try {
+    const response = await axios({
+      method,
+      url: `${API_BASE_URL}${endpoint}`,
+      data: method !== 'GET' ? data : undefined,
+      params: method === 'GET' && data ? data : undefined,
+      headers
+    });
+    
+    return response.data;
+  } catch (error) {
+    throw error;
+  }
+}
 
 // DuckDB数据集定义
 export interface DuckDBDataset {
@@ -48,11 +79,8 @@ export interface CreateDatasetOptions {
  * @returns Promise resolving to a list of DuckDB datasets
  */
 export async function getDuckDBDatasets(): Promise<DuckDBDataset[]> {
-  const client = sdkClient.getClient();
-  
   try {
-    // @ts-expect-error - LumosDBClient has executeRequest method
-    const response = await client.executeRequest('GET', '/api/duckdb/datasets');
+    const response = await apiRequest('GET', '/api/duckdb/datasets');
     return response.data || [];
   } catch (error) {
     const apiError = handleError(error);
@@ -66,11 +94,8 @@ export async function getDuckDBDatasets(): Promise<DuckDBDataset[]> {
  * @returns Promise resolving to the dataset
  */
 export async function getDuckDBDataset(id: string): Promise<DuckDBDataset> {
-  const client = sdkClient.getClient();
-  
   try {
-    // @ts-expect-error - LumosDBClient has executeRequest method
-    const response = await client.executeRequest('GET', `/api/duckdb/datasets/${id}`);
+    const response = await apiRequest('GET', `/api/duckdb/datasets/${id}`);
     return response.data;
   } catch (error) {
     const apiError = handleError(error);
@@ -84,11 +109,8 @@ export async function getDuckDBDataset(id: string): Promise<DuckDBDataset> {
  * @returns Promise resolving to the created dataset
  */
 export async function createDuckDBDataset(options: CreateDatasetOptions): Promise<DuckDBDataset> {
-  const client = sdkClient.getClient();
-  
   try {
-    // @ts-expect-error - LumosDBClient has executeRequest method
-    const response = await client.executeRequest('POST', '/api/duckdb/datasets', options);
+    const response = await apiRequest('POST', '/api/duckdb/datasets', options);
     return response.data;
   } catch (error) {
     const apiError = handleError(error);
@@ -102,11 +124,8 @@ export async function createDuckDBDataset(options: CreateDatasetOptions): Promis
  * @returns Promise resolving to true if successful
  */
 export async function deleteDuckDBDataset(id: string): Promise<boolean> {
-  const client = sdkClient.getClient();
-  
   try {
-    // @ts-expect-error - LumosDBClient has executeRequest method
-    await client.executeRequest('DELETE', `/api/duckdb/datasets/${id}`);
+    await apiRequest('DELETE', `/api/duckdb/datasets/${id}`);
     return true;
   } catch (error) {
     const apiError = handleError(error);
@@ -124,17 +143,12 @@ export async function executeDuckDBQuery(
   query: string,
   datasetId?: string
 ): Promise<{ data: Record<string, unknown>[] | null; error: string | null; duration: number }> {
-  const client = sdkClient.getClient();
-  
   try {
     const endpoint = datasetId 
       ? `/api/duckdb/datasets/${datasetId}/query` 
       : '/api/duckdb/query';
     
-    // @ts-expect-error - LumosDBClient has executeRequest method
-    const response = await client.executeRequest('POST', endpoint, {
-      query
-    });
+    const response = await apiRequest('POST', endpoint, { query });
     
     // 将结果转换成通用格式
     const result: AnalyticsResult = response.data;
@@ -175,11 +189,8 @@ export async function getDuckDBDatasetSchema(id: string): Promise<{
     nullable: boolean;
   }>;
 }> {
-  const client = sdkClient.getClient();
-  
   try {
-    // @ts-expect-error - LumosDBClient has executeRequest method
-    const response = await client.executeRequest('GET', `/api/duckdb/datasets/${id}/schema`);
+    const response = await apiRequest('GET', `/api/duckdb/datasets/${id}/schema`);
     return response.data;
   } catch (error) {
     const apiError = handleError(error);
@@ -194,11 +205,8 @@ export async function getDuckDBDatasetSchema(id: string): Promise<{
  * @returns Promise resolving to the data sample
  */
 export async function getDuckDBDatasetSample(id: string, limit = 100): Promise<AnalyticsResult> {
-  const client = sdkClient.getClient();
-  
   try {
-    // @ts-expect-error - LumosDBClient has executeRequest method
-    const response = await client.executeRequest('GET', `/api/duckdb/datasets/${id}/sample`, { limit });
+    const response = await apiRequest('GET', `/api/duckdb/datasets/${id}/sample`, { limit });
     return response.data;
   } catch (error) {
     const apiError = handleError(error);
@@ -216,11 +224,8 @@ export async function exportDuckDBDataset(
   id: string, 
   format: 'csv' | 'json' | 'parquet'
 ): Promise<{ url: string }> {
-  const client = sdkClient.getClient();
-  
   try {
-    // @ts-expect-error - LumosDBClient has executeRequest method
-    const response = await client.executeRequest('POST', `/api/duckdb/datasets/${id}/export`, { format });
+    const response = await apiRequest('POST', `/api/duckdb/datasets/${id}/export`, { format });
     return response.data;
   } catch (error) {
     const apiError = handleError(error);
@@ -240,11 +245,31 @@ export async function mergeDuckDBDatasets(options: {
   joinType: 'inner' | 'left' | 'right' | 'full';
   joinColumns: Record<string, string>;
 }): Promise<DuckDBDataset> {
-  const client = sdkClient.getClient();
-  
   try {
-    // @ts-expect-error - LumosDBClient has executeRequest method
-    const response = await client.executeRequest('POST', '/api/duckdb/datasets/merge', options);
+    const response = await apiRequest('POST', '/api/duckdb/datasets/merge', options);
+    return response.data;
+  } catch (error) {
+    const apiError = handleError(error);
+    throw apiError;
+  }
+}
+
+/**
+ * Get statistics for a DuckDB dataset
+ * @param id The ID of the dataset
+ * @returns Promise resolving to dataset statistics
+ */
+export async function getDuckDBDatasetStats(id: string): Promise<{
+  rowCount: number;
+  columnCount: number;
+  sizeBytes: number;
+  nullCounts: Record<string, number>;
+  distinctCounts: Record<string, number>;
+  minValues: Record<string, unknown>;
+  maxValues: Record<string, unknown>;
+}> {
+  try {
+    const response = await apiRequest('GET', `/api/duckdb/datasets/${id}/stats`);
     return response.data;
   } catch (error) {
     const apiError = handleError(error);
@@ -262,11 +287,8 @@ export async function batchDuckDBOperations(operations: Array<{
   datasetId?: string;
   options?: Record<string, unknown>;
 }>): Promise<DuckDBBatchResult> {
-  const client = sdkClient.getClient();
-  
   try {
-    // @ts-expect-error - LumosDBClient has executeRequest method
-    const response = await client.executeRequest('POST', '/api/duckdb/batch', { operations });
+    const response = await apiRequest('POST', '/api/duckdb/batch', { operations });
     return response.data;
   } catch (error) {
     const apiError = handleError(error);
