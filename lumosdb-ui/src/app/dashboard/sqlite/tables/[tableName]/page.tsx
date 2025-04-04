@@ -59,16 +59,28 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
     setModuleLoading('sqlite', true);
     
     try {
+      // 使用try/catch增强错误处理
       const result = await deleteTable(tableName);
+      
       if (result.success) {
         toast.success(`Table "${tableName}" deleted successfully`);
         router.push("/dashboard/sqlite");
       } else {
-        toast.error(`Failed to delete table: ${result.error}`);
+        toast.error(`Failed to delete table: ${result.error || '发生未知错误'}`);
       }
     } catch (error) {
       console.error("Error deleting table:", error);
-      toast.error("Failed to delete table");
+      let errorMessage = '发生未知错误';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String((error as {message: unknown}).message);
+      }
+      
+      toast.error(`Failed to delete table: ${errorMessage}`);
     } finally {
       setModuleLoading('sqlite', false);
     }
@@ -110,9 +122,17 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
               Query
             </Link>
           </Button>
-          <Button variant="outline">
-            <Download className="mr-2 h-4 w-4" />
-            Export
+          <Button variant="outline" asChild>
+            <Link href={`/dashboard/sqlite/tables/${tableName}/edit`}>
+              <Database className="mr-2 h-4 w-4" />
+              Edit Structure
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
+            <Link href={`/dashboard/sqlite/export?table=${tableName}`}>
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Link>
           </Button>
           <Button variant="destructive" onClick={handleDeleteTable}>
             <Trash2 className="mr-2 h-4 w-4" />

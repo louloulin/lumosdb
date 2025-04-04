@@ -20,13 +20,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 // 定义表的列信息类型
 interface ColumnInfo {
@@ -74,17 +67,32 @@ export default function SQLitePage() {
     if (!selectedTable) return;
     
     setModuleLoading('sqlite', true);
-    const result = await deleteTable(selectedTable);
-    setModuleLoading('sqlite', false);
-    
-    if (result.success) {
-      toast.success(`Table &quot;${selectedTable}&quot; deleted successfully`);
-      fetchTables();
-    } else {
-      toast.error(`Failed to delete table: ${result.error}`);
+    try {
+      const result = await deleteTable(selectedTable);
+      
+      if (result.success) {
+        toast.success(`Table "${selectedTable}" deleted successfully`);
+        fetchTables();
+      } else {
+        toast.error(`Failed to delete table: ${result.error || '发生未知错误'}`);
+      }
+    } catch (error) {
+      console.error("Error deleting table:", error);
+      let errorMessage = '发生未知错误';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String((error as {message: unknown}).message);
+      }
+      
+      toast.error(`Failed to delete table: ${errorMessage}`);
+    } finally {
+      setModuleLoading('sqlite', false);
+      setDeleteDialogOpen(false);
     }
-    
-    setDeleteDialogOpen(false);
   };
 
   // 清空表
@@ -92,17 +100,32 @@ export default function SQLitePage() {
     if (!selectedTable) return;
     
     setModuleLoading('sqlite', true);
-    const result = await truncateTable(selectedTable);
-    setModuleLoading('sqlite', false);
-    
-    if (result.success) {
-      toast.success(`Table &quot;${selectedTable}&quot; data cleared successfully`);
-      fetchTables();
-    } else {
-      toast.error(`Failed to clear table data: ${result.error}`);
+    try {
+      const result = await truncateTable(selectedTable);
+      
+      if (result.success) {
+        toast.success(`Table "${selectedTable}" data cleared successfully`);
+        fetchTables();
+      } else {
+        toast.error(`Failed to clear table data: ${result.error || '发生未知错误'}`);
+      }
+    } catch (error) {
+      console.error("Error truncating table:", error);
+      let errorMessage = '发生未知错误';
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error && typeof error === 'object' && 'message' in error) {
+        errorMessage = String((error as {message: unknown}).message);
+      }
+      
+      toast.error(`Failed to clear table data: ${errorMessage}`);
+    } finally {
+      setModuleLoading('sqlite', false);
+      setTruncateDialogOpen(false);
     }
-    
-    setTruncateDialogOpen(false);
   };
 
   // 过滤表
@@ -209,42 +232,38 @@ export default function SQLitePage() {
                     <TableCell>{table.schema.length}</TableCell>
                     <TableCell>{table.lastModified ? new Date(table.lastModified).toLocaleDateString() : 'N/A'}</TableCell>
                     <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm">Actions</Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/dashboard/sqlite/tables/${table.name}`}>
-                              View
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link href={`/dashboard/sqlite/tables/${table.name}/edit`}>
-                              Edit
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem 
-                            onClick={() => {
-                              setSelectedTable(table.name);
-                              setTruncateDialogOpen(true);
-                            }}
-                          >
-                            Clear Data
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            className="text-destructive focus:text-destructive"
-                            onClick={() => {
-                              setSelectedTable(table.name);
-                              setDeleteDialogOpen(true);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete Table
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={`/dashboard/sqlite/tables/${table.name}`}>
+                            View
+                          </Link>
+                        </Button>
+                        <Button variant="outline" size="sm" asChild>
+                          <Link href={`/dashboard/sqlite/tables/${table.name}/edit`}>
+                            Edit
+                          </Link>
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => {
+                            setSelectedTable(table.name);
+                            setTruncateDialogOpen(true);
+                          }}
+                        >
+                          Clear
+                        </Button>
+                        <Button 
+                          variant="destructive" 
+                          size="sm"
+                          onClick={() => {
+                            setSelectedTable(table.name);
+                            setDeleteDialogOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -260,7 +279,7 @@ export default function SQLitePage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Table</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the table "{selectedTable}"? This action cannot be undone
+              Are you sure you want to delete the table &quot;{selectedTable}&quot;? This action cannot be undone
               and all data in this table will be permanently lost.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -282,7 +301,7 @@ export default function SQLitePage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Clear Table Data</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to clear all data from the table "{selectedTable}"? This will remove all rows
+              Are you sure you want to clear all data from the table &quot;{selectedTable}&quot;? This will remove all rows
               but keep the table structure intact. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>

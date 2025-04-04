@@ -1,6 +1,7 @@
-import { handleError } from './error-handler';
+import { handleError, getUserFriendlyErrorMessage } from './error-handler';
 import { sdkClient } from './sdk-client';
 import type { DbClient } from '@sdk';
+import { dropTable } from './sql-service';
 
 /**
  * 表管理服务接口
@@ -161,10 +162,9 @@ export async function getTables(database?: string): Promise<TableInfo[]> {
     // 未识别的格式
     else {
       console.error('未知的API返回格式', result);
-      // 尝试将未知格式转换为表名数组
+      // 尝试从对象中提取可能的表数组
       if (result && typeof result === 'object') {
-        // 尝试从对象中提取可能的表数组
-        const possibleTables = Object.values(result).find(val => Array.isArray(val));
+        const possibleTables = Object.values(result as Record<string, unknown>).find(val => Array.isArray(val));
         if (possibleTables && Array.isArray(possibleTables)) {
           console.log('从未知格式中提取出可能的表数组', possibleTables);
           basicTableList = possibleTables.map((item: unknown) => ({
@@ -260,22 +260,12 @@ export async function getTableInfo(tableName: string, database?: string): Promis
 /**
  * 删除表
  * @param tableName 表名
- * @param database 数据库名称
  * @returns 删除结果
  */
-export async function deleteTable(tableName: string, database?: string): Promise<DeleteTableResult> {
+export async function deleteTable(tableName: string): Promise<DeleteTableResult> {
   try {
-    const client = sdkClient.getClient();
-    const db = client.db as DbClient & {
-      execute(params: ExecuteSqlParams): Promise<{ rowsAffected: number; error?: string }>;
-    };
-    
-    // 使用SDK执行删除表的SQL
-    const result = await db.execute({
-      sql: `DROP TABLE IF EXISTS ${tableName}`,
-      database: database || 'main',
-      params: []
-    });
+    // 使用sql-service中的dropTable方法
+    const result = await dropTable(tableName);
     
     if (result.error) {
       return {
@@ -294,7 +284,7 @@ export async function deleteTable(tableName: string, database?: string): Promise
     
     return {
       success: false,
-      error: apiError.message
+      error: getUserFriendlyErrorMessage(apiError)
     };
   }
 }
