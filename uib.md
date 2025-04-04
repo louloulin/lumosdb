@@ -90,6 +90,11 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
    - 文件上传和下载处理
    - 进度跟踪和错误处理
 
+6. **仪表盘功能** ✅
+   - 创建和管理仪表盘
+   - 添加、编辑和删除图表小部件
+   - 共享仪表盘功能
+
 ### 4.4 错误处理与状态管理 ✅
 
 1. **统一错误处理** ✅
@@ -140,6 +145,7 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 | 用户认证对接 | 登录、权限控制 | 2天 | ✅ 已完成 |
 | 实时功能对接 | 实时数据更新 | 3天 | ✅ 已完成 |
 | 数据传输对接 | 数据导入导出功能 | 3天 | ✅ 已完成 |
+| 仪表盘功能对接 | 创建和管理仪表盘 | 3天 | ✅ 已完成 |
 | 测试与优化 | 全面测试、性能优化 | 5天 | ⚠️ 部分完成 |
 | 部署与文档 | 部署配置、使用文档 | 2天 | ⏳ 未开始 |
 
@@ -184,8 +190,10 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 错误处理机制 (`/src/lib/api/error-handler.ts`)
 - ✅ 缓存服务 (`/src/lib/cache-service.ts`)
 - ✅ 数据传输服务 (`/src/lib/api/data-transfer-service.ts`)
-- ✅ 表管理服务 (/src/lib/api/table-management-service.ts)
-- ✅ 备份恢复服务 (/src/lib/api/backup-restore-service.ts)
+- ✅ 表管理服务 (`/src/lib/api/table-management-service.ts`)
+- ✅ 备份恢复服务 (`/src/lib/api/backup-restore-service.ts`)
+- ✅ 分析服务 (`/src/lib/api/analytics-service.ts`)
+- ✅ 仪表盘服务 (`/src/lib/api/dashboard-service.ts`)
 
 ### 10.3 测试用例
 - ✅ SQL服务测试 (`/src/lib/api/__tests__/sql-service.test.ts`)
@@ -196,8 +204,10 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 加载状态管理测试 (`/src/contexts/__tests__/loading-context.test.tsx`)
 - ✅ 加载API钩子测试 (`/src/lib/hooks/__tests__/use-loading-api.test.tsx`)
 - ✅ 数据传输服务测试 (`/src/lib/api/__tests__/data-transfer-service.test.ts`)
-- ✅ 表管理服务 (/src/lib/api/table-management-service.ts)
-- ✅ 备份恢复服务 (/src/lib/api/backup-restore-service.ts)
+- ✅ 表管理服务测试 (`/src/lib/api/__tests__/table-management-service.test.ts`)
+- ✅ 备份恢复服务测试 (`/src/lib/api/__tests__/backup-restore-service.test.ts`)
+- ✅ 分析服务测试 (`/src/lib/api/__tests__/analytics-service.test.ts`)
+- ✅ 仪表盘服务测试 (`/src/lib/api/__tests__/dashboard-service.test.ts`)
 
 ### 10.4 新增功能
 - ✅ 加载状态上下文 (`/src/contexts/loading-context.tsx`)
@@ -212,6 +222,8 @@ SDK 使用 axios 作为 HTTP 客户端，实现与后端 REST API 的通信。
 - ✅ 数据传输模块 (支持多种格式导入导出)
 - ✅ 表管理功能 (获取表列表、表详情、删除表、清空表)
 - ✅ 备份恢复功能 (创建备份、恢复备份、查看备份历史、导出备份、验证备份)
+- ✅ 数据分析功能 (执行分析查询、生成统计报告、异常检测)
+- ✅ 仪表盘管理功能 (创建仪表盘、添加图表部件、分享仪表盘)
 
 ## 11. 下一步工作计划
 

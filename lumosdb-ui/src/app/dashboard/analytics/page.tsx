@@ -63,191 +63,78 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { ApiConfig } from "@/lib/api-config"
+// 导入仪表盘服务
+import {
+  getDashboards,
+  getDashboard,
+  createDashboard as createDashboardApi,
+  updateDashboard as updateDashboardApi,
+  deleteDashboard as deleteDashboardApi,
+  addWidget as addWidgetApi,
+  deleteWidget as deleteWidgetApi,
+  shareDashboard as shareDashboardApi,
+  Dashboard,
+  DashboardWidget,
+  WidgetType
+} from "@/lib/api/dashboard-service"
 
 // 示例数据
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
-// 仪表盘类型
-type WidgetType = 'bar' | 'line' | 'pie' | 'area' | 'stat' | 'table';
-
-// 仪表盘小部件
-interface DashboardWidget {
-  id: string;
-  type: WidgetType;
-  title: string;
-  query: string;
-  description?: string;
-  width: 1 | 2;  // 1: 单列, 2: 双列
-  height: 1 | 2; // 1: 标准高度, 2: 双倍高度
-  options?: {
-    xAxis?: string;
-    yAxis?: string;
-    colors?: string[];
-    labels?: string[];
-    showLegend?: boolean;
-    stacked?: boolean;
-    format?: string;
-  };
-  createdAt: number;
-  updatedAt: number;
-}
-
-// 仪表盘定义
-interface Dashboard {
-  id: string;
-  name: string;
-  description?: string;
-  widgets: DashboardWidget[];
-  isPublic: boolean;
-  createdAt: number;
-  updatedAt: number;
-}
-
-// 根据类型获取图表图标
+// 获取图表图标
 function getChartIcon(type: WidgetType) {
   switch(type) {
-    case 'bar': return <BarChart4 className="h-4 w-4" />;
-    case 'line': return <LineChartIcon className="h-4 w-4" />;
-    case 'pie': return <PieChartIcon className="h-4 w-4" />;
-    case 'area': return <AreaChartIcon className="h-4 w-4" />;
-    case 'stat': return <Layout className="h-4 w-4" />;
-    case 'table': return <PanelLeft className="h-4 w-4" />;
-    default: return <BarChart4 className="h-4 w-4" />;
+    case 'bar':
+      return <BarChart4 className="h-4 w-4 text-muted-foreground" />;
+    case 'line':
+      return <LineChartIcon className="h-4 w-4 text-muted-foreground" />;
+    case 'pie':
+      return <PieChartIcon className="h-4 w-4 text-muted-foreground" />;
+    case 'area':
+      return <AreaChartIcon className="h-4 w-4 text-muted-foreground" />;
+    case 'stat':
+      return <AlertCircle className="h-4 w-4 text-muted-foreground" />;
+    case 'table':
+      return <Layout className="h-4 w-4 text-muted-foreground" />;
   }
 }
 
-// 示例数据生成
+// 生成图表示例数据
 function generateSampleData(type: WidgetType, count = 7) {
-  if (type === 'pie') {
-    return [
-      { name: '商品A', value: 400 },
-      { name: '商品B', value: 300 },
-      { name: '商品C', value: 300 },
-      { name: '商品D', value: 200 },
-      { name: '商品E', value: 100 },
-    ];
-  }
-  
   const data = [];
-  const categories = ['商品A', '商品B', '商品C', '商品D'];
   
-  for (let i = 0; i < count; i++) {
+  // 生成日期范围
+  const endDate = new Date();
+  const days = [];
+  for (let i = count - 1; i >= 0; i--) {
     const date = new Date();
-    date.setDate(date.getDate() - i);
-    const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
-    
-    const entry: Record<string, any> = { date: dateStr };
-    
-    categories.forEach(cat => {
-      entry[cat] = Math.floor(Math.random() * 1000) + 100;
-    });
-    
-    data.push(entry);
+    date.setDate(endDate.getDate() - i);
+    days.push(date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' }));
   }
   
-  return data.reverse();
-}
-
-// 生成示例仪表盘
-function generateSampleDashboards(): Dashboard[] {
-  return [
-    {
-      id: '1',
-      name: '销售分析仪表盘',
-      description: '监控销售趋势和产品表现',
-      isPublic: true,
-      createdAt: Date.now() - 3600000 * 24 * 7,
-      updatedAt: Date.now() - 3600000 * 24,
-    widgets: [
-        {
-          id: '1-1',
-          type: 'bar',
-          title: '销售数量趋势',
-          query: 'SELECT date, product, SUM(quantity) FROM sales GROUP BY date, product ORDER BY date',
-          width: 2,
-          height: 1,
-          options: {
-            xAxis: 'date',
-            yAxis: 'quantity',
-            showLegend: true,
-            stacked: true
-          },
-          createdAt: Date.now() - 3600000 * 24 * 7,
-          updatedAt: Date.now() - 3600000 * 24
-        },
-        {
-          id: '1-2',
-          type: 'pie',
-          title: '产品销售占比',
-          query: 'SELECT product, SUM(amount) as value FROM sales GROUP BY product',
-          width: 1,
-          height: 1,
-          options: {
-            showLegend: true
-          },
-          createdAt: Date.now() - 3600000 * 24 * 7,
-          updatedAt: Date.now() - 3600000 * 24
-        },
-        {
-          id: '1-3',
-          type: 'line',
-          title: '销售额增长',
-          query: 'SELECT date, SUM(amount) as value FROM sales GROUP BY date ORDER BY date',
-          width: 1,
-          height: 1,
-          createdAt: Date.now() - 3600000 * 24 * 7,
-          updatedAt: Date.now() - 3600000 * 24
-        },
-        {
-          id: '1-4',
-          type: 'stat',
-          title: '本月总销售额',
-          query: 'SELECT SUM(amount) as value FROM sales WHERE date >= date_trunc("month", current_date)',
-          width: 1,
-          height: 1,
-          options: {
-            format: 'currency'
-          },
-          createdAt: Date.now() - 3600000 * 24 * 7,
-          updatedAt: Date.now() - 3600000 * 24
-        },
-      ]
-    },
-    {
-      id: '2',
-      name: '用户活跃度分析',
-      description: '分析用户活跃度和留存情况',
-      isPublic: false,
-      createdAt: Date.now() - 3600000 * 24 * 14,
-      updatedAt: Date.now() - 3600000 * 24 * 3,
-    widgets: [
-        {
-          id: '2-1',
-          type: 'area',
-          title: 'DAU趋势',
-          query: 'SELECT date, COUNT(DISTINCT user_id) as count FROM user_events GROUP BY date ORDER BY date',
-          width: 2,
-          height: 1,
-          createdAt: Date.now() - 3600000 * 24 * 14,
-          updatedAt: Date.now() - 3600000 * 24 * 3
-        },
-        {
-          id: '2-2',
-          type: 'bar',
-          title: '用户留存率',
-          query: 'SELECT cohort, day1, day7, day30 FROM user_retention',
-          width: 2,
-          height: 1,
-          options: {
-            stacked: false,
-            showLegend: true
-          },
-          createdAt: Date.now() - 3600000 * 24 * 14,
-          updatedAt: Date.now() - 3600000 * 24 * 3
-        }
-      ]
+  // 生成数据点
+  for (let i = 0; i < count; i++) {
+    const record: any = { date: days[i] };
+    
+    if (type === 'pie') {
+      return [
+        { name: '商品A', value: Math.floor(Math.random() * 1000) + 500 },
+        { name: '商品B', value: Math.floor(Math.random() * 800) + 300 },
+        { name: '商品C', value: Math.floor(Math.random() * 600) + 200 },
+        { name: '商品D', value: Math.floor(Math.random() * 400) + 100 }
+      ];
+    } else if (type === 'stat') {
+      return Math.floor(Math.random() * 10000) + 5000;
+    } else {
+      record['商品A'] = Math.floor(Math.random() * 1000) + 500;
+      record['商品B'] = Math.floor(Math.random() * 800) + 300;
+      record['商品C'] = Math.floor(Math.random() * 600) + 200;
+      record['商品D'] = Math.floor(Math.random() * 400) + 100;
+      data.push(record);
     }
-  ];
+  }
+  
+  return data;
 }
 
 export default function AnalyticsDashboardPage() {
@@ -267,19 +154,23 @@ export default function AnalyticsDashboardPage() {
     const fetchDashboards = async () => {
       setIsLoading(true);
       try {
-        // 模拟API调用
-        setTimeout(() => {
-          const sampleDashboards = generateSampleDashboards();
-          setDashboards(sampleDashboards);
-          if (sampleDashboards.length > 0) {
-            setSelectedDashboard(sampleDashboards[0]);
-          }
-          setIsLoading(false);
-        }, 1000);
+        // 使用API服务获取仪表盘
+        const dashboardList = await getDashboards();
+        setDashboards(dashboardList);
+        if (dashboardList.length > 0) {
+          setSelectedDashboard(dashboardList[0]);
+        }
+        setIsLoading(false);
       } catch (error) {
         console.error('Error loading dashboards:', error);
         toast.error('加载仪表盘失败');
         setIsLoading(false);
+        // 如果API失败，加载示例数据
+        const sampleDashboards = generateSampleDashboards();
+        setDashboards(sampleDashboards);
+        if (sampleDashboards.length > 0) {
+          setSelectedDashboard(sampleDashboards[0]);
+        }
       }
     };
     
@@ -287,117 +178,248 @@ export default function AnalyticsDashboardPage() {
   }, []);
   
   // 创建新仪表盘
-  const createDashboard = () => {
-    const newDashboard: Dashboard = {
-      id: `dashboard-${Date.now()}`,
-      name: '新建仪表盘',
-      description: '描述你的仪表盘',
-      widgets: [],
-      isPublic: false,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
-    };
-    
-    setDashboards([...dashboards, newDashboard]);
-    setSelectedDashboard(newDashboard);
-    setIsEditing(true);
-    toast.success('已创建新仪表盘');
+  const createDashboard = async () => {
+    setIsLoading(true);
+    try {
+      const newDashboard = {
+        name: '新建仪表盘',
+        description: '描述你的仪表盘',
+        widgets: [],
+        isPublic: false
+      };
+      
+      // 调用API创建仪表盘
+      const createdDashboard = await createDashboardApi(newDashboard);
+      
+      setDashboards([...dashboards, createdDashboard]);
+      setSelectedDashboard(createdDashboard);
+      setIsEditing(true);
+      toast.success('已创建新仪表盘');
+    } catch (error) {
+      console.error('Error creating dashboard:', error);
+      toast.error('创建仪表盘失败');
+      
+      // 如果API失败，使用本地模拟
+      const newDashboard: Dashboard = {
+        id: `dashboard-${Date.now()}`,
+        name: '新建仪表盘',
+        description: '描述你的仪表盘',
+        widgets: [],
+        isPublic: false,
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      };
+      
+      setDashboards([...dashboards, newDashboard]);
+      setSelectedDashboard(newDashboard);
+      setIsEditing(true);
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   // 选择仪表盘
-  const selectDashboard = (dashboard: Dashboard) => {
-    setSelectedDashboard(dashboard);
-    setIsEditing(false);
+  const selectDashboard = async (dashboard: Dashboard) => {
+    setIsLoading(true);
+    try {
+      // 获取最新的仪表盘数据
+      const refreshedDashboard = await getDashboard(dashboard.id);
+      setSelectedDashboard(refreshedDashboard);
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error getting dashboard:', error);
+      toast.error('获取仪表盘详情失败');
+      setSelectedDashboard(dashboard);
+      setIsEditing(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   // 创建小部件
-  const createWidget = () => {
+  const createWidget = async () => {
     if (!selectedDashboard) return;
     if (!widgetTitle.trim() || !sqlQuery.trim()) {
       toast.error('请填写标题和查询语句');
       return;
     }
     
-    const newWidget: DashboardWidget = {
-      id: `widget-${Date.now()}`,
-      type: newWidgetType,
-      title: widgetTitle,
-      query: sqlQuery,
-      width: 1,
-      height: 1,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      options: {
-        showLegend: true
-      }
-    };
-    
-    const updatedDashboard = {
-      ...selectedDashboard,
-      widgets: [...selectedDashboard.widgets, newWidget],
-      updatedAt: Date.now()
-    };
-    
-    setSelectedDashboard(updatedDashboard);
-    setDashboards(dashboards.map(d => d.id === updatedDashboard.id ? updatedDashboard : d));
-    setIsCreatingWidget(false);
-    setWidgetTitle('');
-    setSqlQuery('');
-    toast.success('已添加小部件');
+    setIsLoading(true);
+    try {
+      const newWidget = {
+        type: newWidgetType,
+        title: widgetTitle,
+        query: sqlQuery,
+        width: 1,
+        height: 1,
+        options: {
+          showLegend: true
+        }
+      };
+      
+      // 调用API添加小部件
+      const updatedDashboard = await addWidgetApi(selectedDashboard.id, newWidget);
+      
+      setSelectedDashboard(updatedDashboard);
+      setDashboards(dashboards.map(d => d.id === updatedDashboard.id ? updatedDashboard : d));
+      setIsCreatingWidget(false);
+      setWidgetTitle('');
+      setSqlQuery('');
+      toast.success('已添加小部件');
+    } catch (error) {
+      console.error('Error adding widget:', error);
+      toast.error('添加小部件失败');
+      
+      // 如果API失败，使用本地模拟
+      const newWidget: DashboardWidget = {
+        id: `widget-${Date.now()}`,
+        type: newWidgetType,
+        title: widgetTitle,
+        query: sqlQuery,
+        width: 1,
+        height: 1,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        options: {
+          showLegend: true
+        }
+      };
+      
+      const updatedDashboard = {
+        ...selectedDashboard,
+        widgets: [...selectedDashboard.widgets, newWidget],
+        updatedAt: Date.now()
+      };
+      
+      setSelectedDashboard(updatedDashboard);
+      setDashboards(dashboards.map(d => d.id === updatedDashboard.id ? updatedDashboard : d));
+      setIsCreatingWidget(false);
+      setWidgetTitle('');
+      setSqlQuery('');
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   // 删除小部件
-  const deleteWidget = (widgetId: string) => {
+  const deleteWidget = async (widgetId: string) => {
     if (!selectedDashboard) return;
     
-    const updatedWidgets = selectedDashboard.widgets.filter(w => w.id !== widgetId);
-    const updatedDashboard = {
-      ...selectedDashboard,
-      widgets: updatedWidgets,
-      updatedAt: Date.now()
-    };
-    
-    setSelectedDashboard(updatedDashboard);
-    setDashboards(dashboards.map(d => d.id === updatedDashboard.id ? updatedDashboard : d));
-    toast.success('已删除小部件');
+    setIsLoading(true);
+    try {
+      // 调用API删除小部件
+      const updatedDashboard = await deleteWidgetApi(selectedDashboard.id, widgetId);
+      
+      setSelectedDashboard(updatedDashboard);
+      setDashboards(dashboards.map(d => d.id === updatedDashboard.id ? updatedDashboard : d));
+      toast.success('已删除小部件');
+    } catch (error) {
+      console.error('Error deleting widget:', error);
+      toast.error('删除小部件失败');
+      
+      // 如果API失败，使用本地模拟
+      const updatedWidgets = selectedDashboard.widgets.filter(w => w.id !== widgetId);
+      const updatedDashboard = {
+        ...selectedDashboard,
+        widgets: updatedWidgets,
+        updatedAt: Date.now()
+      };
+      
+      setSelectedDashboard(updatedDashboard);
+      setDashboards(dashboards.map(d => d.id === updatedDashboard.id ? updatedDashboard : d));
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   // 保存仪表盘
-  const saveDashboard = () => {
+  const saveDashboard = async () => {
     if (!selectedDashboard) return;
     
-    // 模拟API调用
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // 调用API更新仪表盘
+      const updatedDashboard = await updateDashboardApi(selectedDashboard.id, {
+        name: selectedDashboard.name,
+        description: selectedDashboard.description,
+        isPublic: selectedDashboard.isPublic
+      });
+      
+      setSelectedDashboard(updatedDashboard);
+      setDashboards(dashboards.map(d => d.id === updatedDashboard.id ? updatedDashboard : d));
       setIsEditing(false);
       toast.success('仪表盘已保存');
-    }, 800);
+    } catch (error) {
+      console.error('Error saving dashboard:', error);
+      toast.error('保存仪表盘失败');
+      setIsEditing(false);
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   // 删除仪表盘
-  const deleteDashboard = (dashboardId: string) => {
-    const updatedDashboards = dashboards.filter(d => d.id !== dashboardId);
-    setDashboards(updatedDashboards);
-    
-    if (selectedDashboard && selectedDashboard.id === dashboardId) {
-      setSelectedDashboard(updatedDashboards.length > 0 ? updatedDashboards[0] : null);
+  const deleteDashboard = async (dashboardId: string) => {
+    setIsLoading(true);
+    try {
+      // 调用API删除仪表盘
+      await deleteDashboardApi(dashboardId);
+      
+      const updatedDashboards = dashboards.filter(d => d.id !== dashboardId);
+      setDashboards(updatedDashboards);
+      
+      if (selectedDashboard && selectedDashboard.id === dashboardId) {
+        setSelectedDashboard(updatedDashboards.length > 0 ? updatedDashboards[0] : null);
+      }
+      
+      toast.success('仪表盘已删除');
+    } catch (error) {
+      console.error('Error deleting dashboard:', error);
+      toast.error('删除仪表盘失败');
+      
+      // 如果API失败，使用本地模拟
+      const updatedDashboards = dashboards.filter(d => d.id !== dashboardId);
+      setDashboards(updatedDashboards);
+      
+      if (selectedDashboard && selectedDashboard.id === dashboardId) {
+        setSelectedDashboard(updatedDashboards.length > 0 ? updatedDashboards[0] : null);
+      }
+    } finally {
+      setIsLoading(false);
     }
-    
-    toast.success('仪表盘已删除');
   };
   
   // 共享仪表盘
-  const shareDashboard = () => {
+  const shareDashboard = async () => {
     if (!selectedDashboard) return;
     
-    // 模拟API调用
     setIsLoading(true);
-    setTimeout(() => {
-      setIsLoading(false);
+    try {
+      // 调用API共享仪表盘
+      const shareOptions = {
+        isPublic: true,
+        expiresAt: Date.now() + 7 * 24 * 60 * 60 * 1000 // 7天后过期
+      };
+      
+      const shareResult = await shareDashboardApi(selectedDashboard.id, shareOptions);
+      
+      // 复制链接到剪贴板
+      navigator.clipboard.writeText(shareResult.url)
+        .then(() => {
+          toast.success('分享链接已复制到剪贴板');
+        })
+        .catch(err => {
+          console.error('Failed to copy:', err);
+          toast.error('复制链接失败');
+        });
+    } catch (error) {
+      console.error('Error sharing dashboard:', error);
+      toast.error('共享仪表盘失败');
+      
+      // 如果API失败，使用本地模拟
       const shareUrl = `${window.location.origin}/shared/dashboard/${selectedDashboard.id}`;
       
-      // Copy to clipboard
+      // 复制到剪贴板
       navigator.clipboard.writeText(shareUrl)
         .then(() => {
           toast.success('分享链接已复制到剪贴板');
@@ -406,7 +428,9 @@ export default function AnalyticsDashboardPage() {
           console.error('Failed to copy:', err);
           toast.error('复制链接失败');
         });
-    }, 500);
+    } finally {
+      setIsLoading(false);
+    }
   };
   
   // 自定义图表
@@ -432,7 +456,7 @@ export default function AnalyticsDashboardPage() {
         );
       
       case 'line':
-  return (
+        return (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -543,6 +567,51 @@ export default function AnalyticsDashboardPage() {
     }
   };
   
+  // 生成示例仪表盘
+  function generateSampleDashboards(): Dashboard[] {
+    return [
+      {
+        id: '1',
+        name: '示例仪表盘',
+        description: '这是一个示例仪表盘，展示了不同类型的图表',
+        isPublic: true,
+        createdAt: Date.now() - 3600000 * 24 * 7,
+        updatedAt: Date.now() - 3600000 * 24,
+        widgets: [
+          {
+            id: '1-1',
+            type: 'bar',
+            title: '示例柱状图',
+            query: 'SELECT date, product, SUM(quantity) FROM sales GROUP BY date, product ORDER BY date',
+            width: 2,
+            height: 1,
+            options: {
+              xAxis: 'date',
+              yAxis: 'quantity',
+              showLegend: true,
+              stacked: true
+            },
+            createdAt: Date.now() - 3600000 * 24 * 7,
+            updatedAt: Date.now() - 3600000 * 24
+          },
+          {
+            id: '1-2',
+            type: 'pie',
+            title: '示例饼图',
+            query: 'SELECT product, SUM(amount) as value FROM sales GROUP BY product',
+            width: 1,
+            height: 1,
+            options: {
+              showLegend: true
+            },
+            createdAt: Date.now() - 3600000 * 24 * 7,
+            updatedAt: Date.now() - 3600000 * 24
+          }
+        ]
+      }
+    ];
+  }
+  
   return (
     <div className="container mx-auto p-6">
       <PageHeader 
@@ -556,7 +625,7 @@ export default function AnalyticsDashboardPage() {
                   <Button onClick={saveDashboard} disabled={isLoading}>
                     {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                     保存仪表盘
-                    </Button>
+                  </Button>
                 ) : (
                   <>
                     <Button variant="outline" onClick={shareDashboard}>
@@ -575,7 +644,7 @@ export default function AnalyticsDashboardPage() {
               <Plus className="mr-2 h-4 w-4" />
               新建仪表盘
             </Button>
-              </div>
+          </div>
         }
       />
       
@@ -598,7 +667,7 @@ export default function AnalyticsDashboardPage() {
                   <div className="flex justify-between items-start">
                     <CardTitle className="text-xl">{dashboard.name}</CardTitle>
                     {dashboard.isPublic && <Badge variant="outline">已共享</Badge>}
-            </div>
+                  </div>
                   <CardDescription>{dashboard.description}</CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -620,9 +689,9 @@ export default function AnalyticsDashboardPage() {
                       <Trash2 className="h-4 w-4 text-muted-foreground" />
                     </Button>
                     
-                      <Button 
+                    <Button 
                       variant="ghost" 
-                        size="sm" 
+                      size="sm" 
                       onClick={(e) => {
                         e.stopPropagation();
                         const newDashboard = {
@@ -640,7 +709,7 @@ export default function AnalyticsDashboardPage() {
                     </Button>
                   </div>
                 </CardFooter>
-                      </Card>
+              </Card>
             ))}
           </div>
           
@@ -678,25 +747,25 @@ export default function AnalyticsDashboardPage() {
                             value={widgetTitle}
                             onChange={(e) => setWidgetTitle(e.target.value)}
                           />
-                </div>
-                
+                        </div>
+                        
                         <div className="grid gap-2">
                           <Label htmlFor="type">图表类型</Label>
                           <Select value={newWidgetType} onValueChange={(v) => setNewWidgetType(v as WidgetType)}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
                               <SelectItem value="bar">柱状图</SelectItem>
                               <SelectItem value="line">折线图</SelectItem>
                               <SelectItem value="pie">饼图</SelectItem>
                               <SelectItem value="area">面积图</SelectItem>
                               <SelectItem value="stat">数字统计</SelectItem>
                               <SelectItem value="table">表格</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        
                         <div className="grid gap-2">
                           <Label htmlFor="sql">SQL查询</Label>
                           <Textarea
@@ -799,7 +868,7 @@ export default function AnalyticsDashboardPage() {
                           </DialogContent>
                         </Dialog>
                       )}
-                </div>
+                    </div>
                   </Card>
                 )}
               </div>
@@ -817,7 +886,7 @@ export default function AnalyticsDashboardPage() {
                 <Button onClick={createDashboard}>
                   <Plus className="mr-2 h-4 w-4" />
                   新建仪表盘
-              </Button>
+                </Button>
               </div>
             </Card>
           )}
@@ -837,9 +906,9 @@ export default function AnalyticsDashboardPage() {
                     <ExternalLink className="mr-2 h-4 w-4" />
                     访问示例仪表盘
                   </a>
-              </Button>
+                </Button>
+              </div>
             </div>
-          </div>
           </Card>
         </TabsContent>
       </Tabs>
