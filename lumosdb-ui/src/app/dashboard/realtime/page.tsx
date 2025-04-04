@@ -50,58 +50,19 @@ import {
   Trash2,
   XCircle
 } from "lucide-react"
+
+// Import from the new real implementation instead of the mock
 import { 
   ConnectionState,
   SubscriptionType,
   EventType,
   RealtimeEvent,
   SubscriptionOptions,
-} from "@/lib/realtime"
-
-// 导入新实现的实时数据服务
-import * as realtimeService from "@/lib/api/realtime-service"
-
-// 创建一个实时连接Hook，使用我们的新服务
-function useRealtimeConnection() {
-  const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.CLOSED);
-
-  useEffect(() => {
-    // 初始化服务
-    realtimeService.initializeRealtimeService();
-    
-    // 获取初始连接状态
-    setConnectionState(realtimeService.getConnectionState());
-    
-    // 如果需要，自动连接
-    // realtimeService.connect().then(setConnectionState);
-    
-    return () => {
-      // 组件卸载时断开连接
-      realtimeService.disconnect();
-    };
-  }, []);
-
-  // 连接函数
-  const connect = async () => {
-    try {
-      const state = await realtimeService.connect();
-      setConnectionState(state);
-      return state;
-    } catch (error) {
-      console.error("无法连接到实时服务:", error);
-      toast.error("无法连接到实时服务");
-      return ConnectionState.CLOSED;
-    }
-  };
-
-  // 断开函数
-  const disconnect = () => {
-    realtimeService.disconnect();
-    setConnectionState(ConnectionState.CLOSED);
-  };
-  
-  return { connectionState, connect, disconnect };
-}
+  useRealtimeConnection,
+  useRealtimeSubscription,
+  subscribe,
+  unsubscribe
+} from "@/lib/real-realtime"
 
 export default function RealtimePage() {
   const [activeTab, setActiveTab] = useState("monitor");
@@ -519,7 +480,7 @@ function EventLog({ subscriptions }: { subscriptions: SubscriptionOptions[] }) {
     
     // Create a separate client subscription for each option
     subscriptions.forEach(subscription => {
-      const unsub = realtimeService.subscribe(subscription, handleNewEvent);
+      const unsub = subscribe(subscription, handleNewEvent);
       unsubscribes.push(unsub);
     });
     
@@ -610,7 +571,7 @@ function ChangeMonitor({ subscriptions }: { subscriptions: SubscriptionOptions[]
     
     // Subscribe to each table subscription
     tableSubscriptions.forEach(subscription => {
-      const unsub = realtimeService.subscribe(subscription, handleTableEvent);
+      const unsub = subscribe(subscription, handleTableEvent);
       unsubscribes.push(unsub);
     });
     
@@ -644,7 +605,7 @@ function ChangeMonitor({ subscriptions }: { subscriptions: SubscriptionOptions[]
     
     // Subscribe to each vector subscription
     vectorSubscriptions.forEach(subscription => {
-      const unsub = realtimeService.subscribe(subscription, handleVectorEvent);
+      const unsub = subscribe(subscription, handleVectorEvent);
       unsubscribes.push(unsub);
     });
     

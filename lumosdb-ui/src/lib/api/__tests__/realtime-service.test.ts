@@ -9,6 +9,19 @@ import {
 } from '../realtime-service';
 import * as sdkClient from '../sdk-client';
 import { ConnectionState, EventType, SubscriptionType } from '../../realtime';
+import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { getClient } from '../sdk-client';
+import * as realtimeService from '../realtime-service';
+import { handleApiError } from '../error-handler';
+
+// Mock the SDK client and error handler
+vi.mock('../sdk-client', () => ({
+  getClient: vi.fn(),
+}));
+
+vi.mock('../error-handler', () => ({
+  handleApiError: vi.fn(),
+}));
 
 // Mock the SDK client
 jest.mock('../sdk-client', () => ({
@@ -67,9 +80,15 @@ class MockWebSocket {
 global.WebSocket = MockWebSocket as any;
 
 describe('realtime-service', () => {
-  let mockSocket: MockWebSocket;
-  
+  const mockClient = {
+    realtimeApi: {
+      getRealtimeUrl: vi.fn(),
+    },
+  };
+
   beforeEach(() => {
+    vi.clearAllMocks();
+    (getClient as any).mockReturnValue(mockClient);
     jest.clearAllMocks();
     jest.restoreAllMocks();
     
@@ -78,7 +97,7 @@ describe('realtime-service', () => {
     
     // Mock WebSocket creation
     jest.spyOn(global, 'WebSocket').mockImplementation((url: string, protocols?: string | string[]) => {
-      mockSocket = new MockWebSocket(url, protocols);
+      const mockSocket = new MockWebSocket(url, protocols);
       return mockSocket as any;
     });
     
@@ -100,6 +119,7 @@ describe('realtime-service', () => {
       const promise = connect();
       
       // Simulate successful connection
+      const mockSocket = global.WebSocket as MockWebSocket;
       mockSocket.simulateOpen();
       
       const state = await promise;
@@ -111,6 +131,7 @@ describe('realtime-service', () => {
       const promise = connect();
       
       // Simulate error
+      const mockSocket = global.WebSocket as MockWebSocket;
       mockSocket.simulateError();
       mockSocket.simulateOpen(); // Close after error
       
@@ -123,6 +144,7 @@ describe('realtime-service', () => {
       
       await connect();
       
+      const mockSocket = global.WebSocket as MockWebSocket;
       expect(mockSocket.url).toContain('token=test-token');
     });
   });
@@ -130,6 +152,7 @@ describe('realtime-service', () => {
   describe('disconnect', () => {
     it('should disconnect from the WebSocket server', async () => {
       await connect();
+      const mockSocket = global.WebSocket as MockWebSocket;
       mockSocket.simulateOpen();
       
       disconnect();
@@ -141,6 +164,7 @@ describe('realtime-service', () => {
   describe('subscribe and unsubscribe', () => {
     beforeEach(async () => {
       await connect();
+      const mockSocket = global.WebSocket as MockWebSocket;
       mockSocket.simulateOpen();
     });
     
@@ -282,12 +306,184 @@ describe('realtime-service', () => {
   describe('setAuthToken', () => {
     it('should update the auth token and reconnect if already connected', async () => {
       await connect();
+      const mockSocket = global.WebSocket as MockWebSocket;
       mockSocket.simulateOpen();
       
       const spy = jest.spyOn(global, 'WebSocket');
       setAuthToken('new-token');
       
       expect(spy).toHaveBeenCalledWith(expect.stringContaining('token=new-token'), undefined);
+    });
+  });
+
+  describe('getWebSocketUrl', () => {
+    it('should return WebSocket URL when API call is successful', async () => {
+      const mockUrl = 'wss://example.com/websocket';
+      mockClient.realtimeApi.getRealtimeUrl.mockResolvedValueOnce({ url: mockUrl });
+
+      const result = await realtimeService.getWebSocketUrl();
+
+      expect(mockClient.realtimeApi.getRealtimeUrl).toHaveBeenCalledTimes(1);
+      expect(result).toBe(mockUrl);
+    });
+
+    it('should handle API error when getting WebSocket URL fails', async () => {
+      const mockError = new Error('API error');
+      mockClient.realtimeApi.getRealtimeUrl.mockRejectedValueOnce(mockError);
+      (handleApiError as any).mockImplementationOnce((err) => {
+        throw err;
+      });
+
+      await expect(realtimeService.getWebSocketUrl()).rejects.toThrow('API error');
+      expect(handleApiError).toHaveBeenCalledWith(mockError);
+    });
+  });
+
+  describe('subscribeToTableChanges', () => {
+    it('should format subscription message for table changes', () => {
+      const tableName = 'users';
+      
+      const result = realtimeService.subscribeToTableChanges(tableName);
+      
+      expect(result).toEqual({
+        type: 'subscribe',
+        channel: 'table_changes',
+        filter: { table_name: tableName }
+      });
+    });
+  });
+
+  describe('subscribeToVectorCollectionChanges', () => {
+    it('should format subscription message for vector collection changes', () => {
+      const collectionName = 'embeddings';
+      
+      const result = realtimeService.subscribeToVectorCollectionChanges(collectionName);
+      
+      expect(result).toEqual({
+        type: 'subscribe',
+        channel: 'vector_collection_changes',
+        filter: { collection_name: collectionName }
+      });
+    });
+  });
+
+  describe('subscribeToSystemEvents', () => {
+    it('should format subscription message for system events', () => {
+      const eventTypes = ['backup_created', 'error'];
+      
+      const result = realtimeService.subscribeToSystemEvents(eventTypes);
+      
+      expect(result).toEqual({
+        type: 'subscribe',
+        channel: 'system_events',
+        filter: { event_types: eventTypes }
+      });
+    });
+
+    it('should use empty array when no event types are provided', () => {
+      const result = realtimeService.subscribeToSystemEvents();
+      
+      expect(result).toEqual({
+        type: 'subscribe',
+        channel: 'system_events',
+        filter: { event_types: [] }
+      });
+    });
+  });
+
+  describe('unsubscribe', () => {
+    it('should format unsubscribe message', () => {
+      const subscriptionId = '123456';
+      
+      const result = realtimeService.unsubscribe(subscriptionId);
+      
+      expect(result).toEqual({
+        type: 'unsubscribe',
+        subscription_id: subscriptionId
+      });
+    });
+  });
+
+  describe('formatEvent', () => {
+    it('should format table change event', () => {
+      const event = {
+        event_type: 'table_change',
+        table_name: 'users',
+        operation: 'insert',
+        timestamp: '2023-01-01T12:00:00Z',
+        affected_rows: 5
+      };
+      
+      const result = realtimeService.formatEvent(event);
+      
+      expect(result).toEqual({
+        type: 'Table Change',
+        target: 'users',
+        operation: 'INSERT',
+        details: '5 rows affected',
+        timestamp: expect.any(Date),
+        raw: event
+      });
+    });
+
+    it('should format vector collection change event', () => {
+      const event = {
+        event_type: 'vector_collection_change',
+        collection_name: 'embeddings',
+        operation: 'update',
+        timestamp: '2023-01-01T12:00:00Z',
+        vectors_count: 10
+      };
+      
+      const result = realtimeService.formatEvent(event);
+      
+      expect(result).toEqual({
+        type: 'Vector Change',
+        target: 'embeddings',
+        operation: 'UPDATE',
+        details: '10 vectors affected',
+        timestamp: expect.any(Date),
+        raw: event
+      });
+    });
+
+    it('should format system event', () => {
+      const event = {
+        event_type: 'system_event',
+        event_name: 'backup_created',
+        timestamp: '2023-01-01T12:00:00Z',
+        details: { backup_id: 'bk-123', size: '50MB' }
+      };
+      
+      const result = realtimeService.formatEvent(event);
+      
+      expect(result).toEqual({
+        type: 'System Event',
+        target: 'backup_created',
+        operation: 'INFO',
+        details: JSON.stringify({ backup_id: 'bk-123', size: '50MB' }),
+        timestamp: expect.any(Date),
+        raw: event
+      });
+    });
+
+    it('should handle unknown event types', () => {
+      const event = {
+        event_type: 'unknown_type',
+        timestamp: '2023-01-01T12:00:00Z',
+        data: 'some data'
+      };
+      
+      const result = realtimeService.formatEvent(event);
+      
+      expect(result).toEqual({
+        type: 'Unknown Event',
+        target: 'unknown_type',
+        operation: 'INFO',
+        details: JSON.stringify({ data: 'some data' }),
+        timestamp: expect.any(Date),
+        raw: event
+      });
     });
   });
 }); 

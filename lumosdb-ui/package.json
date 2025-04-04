@@ -14,6 +14,11 @@
     "test:dashboard-api": "tsx scripts/test-dashboard-api.ts",
     "test:dashboard-search": "tsx scripts/test-dashboard-search.ts",
     "test:notification-api": "tsx scripts/test-notification-api.ts",
+    "test:realtime-api": "tsx scripts/test-realtime-api.ts",
+    "test:backup-restore-api": "tsx scripts/test-backup-restore-api.ts",
+    "test-notification-api": "tsx scripts/test-notification-api.ts",
+    "test-backup-restore-api": "tsx scripts/test-backup-restore-api.ts",
+    "test-analytics-api": "tsx scripts/test-analytics-api.ts",
     "generate:icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
