@@ -202,6 +202,63 @@ describe('Dashboard Service', () => {
       expect(mockExecuteRequest).toHaveBeenCalledWith('DELETE', '/api/dashboards/1');
       expect(result).toBe(true);
     });
+
+    it('should throw error when delete request fails', async () => {
+      // 模拟请求失败
+      const error = new Error('Failed to delete dashboard');
+      mockExecuteRequest.mockRejectedValueOnce(error);
+
+      await expect(deleteDashboard('1')).rejects.toEqual({
+        code: 'test_error',
+        message: 'Failed to delete dashboard',
+        details: {}
+      });
+      
+      expect(handleError).toHaveBeenCalledWith(error);
+    });
+
+    // Real API test - disabled by default with skip
+    // This test should be run manually against a live API
+    it.skip('should delete a real dashboard using actual API', async () => {
+      // Reset mocks
+      jest.clearAllMocks();
+      
+      // Don't use mocked client for this test
+      const realClient = {
+        executeRequest: jest.fn().mockImplementation(async (method, url) => {
+          // Make actual API call here
+          const response = await fetch(`http://localhost:8080${url}`, {
+            method,
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (!response.ok) {
+            throw new Error(`API error: ${response.status}`);
+          }
+          
+          // Empty response for delete operation
+          return {};
+        })
+      };
+      
+      // Use the real client for this test
+      (sdkClient.getClient as jest.Mock).mockReturnValue(realClient);
+      
+      // Test with a real dashboard ID (must exist in your test environment)
+      const dashboardId = 'test-dashboard-123';
+      
+      // Execute the delete
+      const result = await deleteDashboard(dashboardId);
+      
+      // Verify the result
+      expect(result).toBe(true);
+      expect(realClient.executeRequest).toHaveBeenCalledWith(
+        'DELETE', 
+        `/api/dashboards/${dashboardId}`
+      );
+    });
   });
 
   describe('addWidget', () => {

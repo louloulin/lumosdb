@@ -10,4 +10,21 @@ global.console = {
 };
 
 // 设置测试环境
-process.env.NEXT_PUBLIC_API_URL = 'http://localhost:3008'; 
+process.env.NEXT_PUBLIC_API_URL = 'http://localhost:3008';
+
+// Add Jest setup code here
+import '@testing-library/jest-dom';
+
+// Mock Next.js router
+jest.mock('next/navigation', () => ({
+  useRouter: jest.fn(() => ({
+    push: jest.fn(),
+    replace: jest.fn(),
+    prefetch: jest.fn(),
+    back: jest.fn(),
+    forward: jest.fn(),
+    refresh: jest.fn()
+  })),
+  usePathname: jest.fn().mockReturnValue('/'),
+  useSearchParams: jest.fn(() => new URLSearchParams()),
+})); 

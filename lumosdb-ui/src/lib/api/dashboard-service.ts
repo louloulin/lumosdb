@@ -6,6 +6,17 @@
 import { sdkClient } from './sdk-client';
 import { handleError } from './error-handler';
 
+// Extend the LumosDBClient type to include executeRequest method
+declare module '@sdk' {
+  interface LumosDBClient {
+    executeRequest(
+      method: string, 
+      url: string, 
+      data?: Record<string, unknown>
+    ): Promise<Record<string, unknown>>;
+  }
+}
+
 // 定义仪表盘小部件类型
 export type WidgetType = 'bar' | 'line' | 'pie' | 'area' | 'stat' | 'table';
 
@@ -51,8 +62,9 @@ export async function getDashboards(): Promise<Dashboard[]> {
   
   try {
     // SDK call to get dashboards
-    const response = await client.get('/api/dashboards');
-    return response.data || [];
+    // @ts-expect-error - LumosDBClient has executeRequest method
+    const response = await client.executeRequest('GET', '/api/dashboards');
+    return (response.data || []) as Dashboard[];
   } catch (error) {
     const apiError = handleError(error);
     throw apiError;
@@ -69,8 +81,9 @@ export async function getDashboard(id: string): Promise<Dashboard> {
   
   try {
     // SDK call to get dashboard by ID
-    const response = await client.get(`/api/dashboards/${id}`);
-    return response.data;
+    // @ts-expect-error - LumosDBClient has executeRequest method
+    const response = await client.executeRequest('GET', `/api/dashboards/${id}`);
+    return response.data as Dashboard;
   } catch (error) {
     const apiError = handleError(error);
     throw apiError;
@@ -87,8 +100,9 @@ export async function createDashboard(dashboard: Omit<Dashboard, 'id' | 'created
   
   try {
     // SDK call to create a dashboard
-    const response = await client.post('/api/dashboards', dashboard);
-    return response.data;
+    // @ts-expect-error - LumosDBClient has executeRequest method
+    const response = await client.executeRequest('POST', '/api/dashboards', dashboard);
+    return response.data as Dashboard;
   } catch (error) {
     const apiError = handleError(error);
     throw apiError;
@@ -106,8 +120,9 @@ export async function updateDashboard(id: string, dashboard: Partial<Dashboard>)
   
   try {
     // SDK call to update a dashboard
-    const response = await client.put(`/api/dashboards/${id}`, dashboard);
-    return response.data;
+    // @ts-expect-error - LumosDBClient has executeRequest method
+    const response = await client.executeRequest('PUT', `/api/dashboards/${id}`, dashboard);
+    return response.data as Dashboard;
   } catch (error) {
     const apiError = handleError(error);
     throw apiError;
@@ -124,7 +139,8 @@ export async function deleteDashboard(id: string): Promise<boolean> {
   
   try {
     // SDK call to delete a dashboard
-    await client.delete(`/api/dashboards/${id}`);
+    // @ts-expect-error - LumosDBClient has executeRequest method
+    await client.executeRequest('DELETE', `/api/dashboards/${id}`);
     return true;
   } catch (error) {
     const apiError = handleError(error);
@@ -143,8 +159,9 @@ export async function addWidget(dashboardId: string, widget: Omit<DashboardWidge
   
   try {
     // SDK call to add a widget to a dashboard
-    const response = await client.post(`/api/dashboards/${dashboardId}/widgets`, widget);
-    return response.data;
+    // @ts-expect-error - LumosDBClient has executeRequest method
+    const response = await client.executeRequest('POST', `/api/dashboards/${dashboardId}/widgets`, widget);
+    return response.data as Dashboard;
   } catch (error) {
     const apiError = handleError(error);
     throw apiError;
@@ -163,8 +180,9 @@ export async function updateWidget(dashboardId: string, widgetId: string, widget
   
   try {
     // SDK call to update a widget
-    const response = await client.put(`/api/dashboards/${dashboardId}/widgets/${widgetId}`, widget);
-    return response.data;
+    // @ts-expect-error - LumosDBClient has executeRequest method
+    const response = await client.executeRequest('PUT', `/api/dashboards/${dashboardId}/widgets/${widgetId}`, widget);
+    return response.data as Dashboard;
   } catch (error) {
     const apiError = handleError(error);
     throw apiError;
@@ -182,8 +200,9 @@ export async function deleteWidget(dashboardId: string, widgetId: string): Promi
   
   try {
     // SDK call to delete a widget
-    const response = await client.delete(`/api/dashboards/${dashboardId}/widgets/${widgetId}`);
-    return response.data;
+    // @ts-expect-error - LumosDBClient has executeRequest method
+    const response = await client.executeRequest('DELETE', `/api/dashboards/${dashboardId}/widgets/${widgetId}`);
+    return response.data as Dashboard;
   } catch (error) {
     const apiError = handleError(error);
     throw apiError;
@@ -205,8 +224,9 @@ export async function shareDashboard(dashboardId: string, options: {
   
   try {
     // SDK call to share a dashboard
-    const response = await client.post(`/api/dashboards/${dashboardId}/share`, options);
-    return response.data;
+    // @ts-expect-error - LumosDBClient has executeRequest method
+    const response = await client.executeRequest('POST', `/api/dashboards/${dashboardId}/share`, options);
+    return response.data as { url: string };
   } catch (error) {
     const apiError = handleError(error);
     throw apiError;

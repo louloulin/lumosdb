@@ -1,13 +1,12 @@
 /** @type {import('jest').Config} */
-const config = {
+module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'jsdom',
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
-    '^@sdk/(.*)$': '<rootDir>/../clients/ts/src/$1',
-    '^@sdk$': '<rootDir>/../clients/ts/src/index.ts',
   },
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  testPathIgnorePatterns: ['<rootDir>/node_modules/'],
   transform: {
     '^.+\\.(ts|tsx)$': ['ts-jest', {
       tsconfig: 'tsconfig.json',
@@ -21,6 +20,4 @@ const config = {
     '!src/**/*.d.ts',
   ],
   coverageDirectory: 'coverage',
-};
-
-export default config; 
+}; 
