@@ -6,10 +6,12 @@ import { PlusCircle, BarChart, Share2, Trash2, Edit, Search } from 'lucide-react
 import { LoadingIndicator } from '@/components/ui/loading-indicator';
 import { useToast } from '@/components/ui/use-toast';
 import { getDashboards, Dashboard, deleteDashboard } from '@/lib/api/dashboard-service';
+import { createDashboardNotification } from '@/lib/api/notification-service';
 import { getUserFriendlyErrorMessage, ApiError } from '@/lib/api/error-handler';
 import { useLoadingApi } from '@/lib/hooks/use-loading-api';
 import { useLoading } from '@/contexts/loading-context';
 import { DashboardSearch } from './DashboardSearch';
+import { NotificationPanel } from '@/components/NotificationPanel';
 
 /**
  * 仪表盘列表组件
@@ -33,6 +35,12 @@ export function DashboardList() {
     module: 'dashboards:delete',
     successMessage: '仪表盘已成功删除',
     showSuccessToast: true
+  });
+  
+  // 初始化通知API
+  const notificationApi = useLoadingApi(createDashboardNotification, {
+    module: 'notifications:create',
+    defaultErrorMessage: '创建通知失败'
   });
 
   // 加载仪表盘列表
@@ -78,18 +86,39 @@ export function DashboardList() {
   };
 
   // 删除仪表盘
-  const handleDeleteDashboard = async (id: string) => {
+  const handleDeleteDashboard = async (id: string, name: string) => {
     if (!confirm('确定要删除这个仪表盘吗？此操作不可恢复。')) {
       return;
     }
 
     try {
       await deleteApi.execute(id);
+      
+      // 创建删除通知
+      try {
+        await notificationApi.execute(id, 'deleted', { name });
+      } catch {
+        // 通知创建失败可以忽略，不影响主功能
+      }
+      
       // 重新加载仪表盘列表
       loadDashboards();
     } catch {
       // 错误已通过 useLoadingApi 处理，无需额外处理
     }
+  };
+
+  // 共享仪表盘
+  const handleShareDashboard = async (id: string, name: string) => {
+    // 记录共享操作通知
+    try {
+      await notificationApi.execute(id, 'shared', { name });
+    } catch {
+      // 通知创建失败可以忽略，不影响主功能
+    }
+    
+    // 导航到共享页面
+    router.push(`/dashboards/${id}/share`);
   };
 
   // 处理搜索结果
@@ -122,10 +151,13 @@ export function DashboardList() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold">我的仪表盘</h2>
-        <Button onClick={handleCreateDashboard}>
-          <PlusCircle className="mr-2 h-4 w-4" />
-          新建仪表盘
-        </Button>
+        <div className="flex items-center space-x-2">
+          <NotificationPanel />
+          <Button onClick={handleCreateDashboard}>
+            <PlusCircle className="mr-2 h-4 w-4" />
+            新建仪表盘
+          </Button>
+        </div>
       </div>
       
       <div className="w-full max-w-md mx-auto mb-6">
@@ -210,7 +242,7 @@ export function DashboardList() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => router.push(`/dashboards/${dashboard.id}/share`)}
+                    onClick={() => handleShareDashboard(dashboard.id, dashboard.name)}
                     title="共享仪表盘"
                   >
                     <Share2 className="h-4 w-4" />
@@ -218,7 +250,7 @@ export function DashboardList() {
                   <Button
                     variant="ghost"
                     size="icon"
-                    onClick={() => handleDeleteDashboard(dashboard.id)}
+                    onClick={() => handleDeleteDashboard(dashboard.id, dashboard.name)}
                     title="删除仪表盘"
                     className="text-red-500 hover:text-red-600 hover:bg-red-50"
                     disabled={isModuleLoading('dashboards:delete')}

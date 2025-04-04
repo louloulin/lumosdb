@@ -9,7 +9,12 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:coverage": "jest --coverage",
+    "test:watch": "jest --watch",
+    "test:dashboard-api": "tsx scripts/test-dashboard-api.ts",
+    "test:dashboard-search": "tsx scripts/test-dashboard-search.ts",
+    "test:notification-api": "tsx scripts/test-notification-api.ts",
+    "generate:icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
     "@ai-sdk/openai": "^1.3.6",
