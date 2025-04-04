@@ -146,3 +146,34 @@ bun run test
 ## License
 
 MIT
+
+## 最近更新
+
+### 错误处理和特殊字符支持改进
+
+1. 修复了 `DbClient.execute()` 用于SELECT语句时的错误消息，使其与后端一致
+2. 改进 `DbClient.getTableInfo()` 方法，现在能正确处理Unicode字符和特殊字符
+3. 优化了 `prepareSqlWithSafeTableNames()` 函数，确保保留SQL关键字的原始大小写
+4. 增强了 `tableExists()` 方法的稳定性，能处理各种表名格式和异常情况
+5. 添加针对 `executeSql()` 方法的全面测试，验证其自动选择适当方法的能力
+
+### 测试覆盖
+
+增加了以下测试场景:
+
+- 处理包含特殊字符的表名
+- 用于检验 `executeSql()` 方法处理不同SQL类型的行为
+- 确认SQL注入防护机制的有效性
+- 验证错误处理和边缘情况的正确响应
+
+## 使用示例
+
+```typescript
+import { LumosDBClient } from 'lumosdb-client';
+
+// Create a client instance
+const client = new LumosDBClient('http://localhost:3000');
+
+// Optionally add authentication
+client.setApiKey('your-api-key');
+```

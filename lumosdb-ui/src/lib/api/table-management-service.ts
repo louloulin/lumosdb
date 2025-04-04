@@ -17,6 +17,8 @@ export interface TableInfo {
   schema: ColumnInfo[];
   created?: string;
   lastModified?: string;
+  accessible?: boolean; // 表是否可以访问
+  accessError?: string; // 访问错误信息
 }
 
 /**
@@ -192,10 +194,24 @@ export async function getTables(database?: string): Promise<TableInfo[]> {
         try {
           console.log(`正在获取表 ${table.name} 的详细信息...`);
           const tableInfo = await getTableInfo(table.name, database);
-          return tableInfo || table; // 如果获取失败，保留基本信息
+          if (tableInfo) {
+            return tableInfo;
+          } else {
+            // 如果获取失败，标记为不可访问但仍保留基本信息
+            return {
+              ...table,
+              accessible: false,
+              accessError: `无法访问表 ${table.name}，可能需要检查权限或表名`
+            };
+          }
         } catch (error) {
           console.error(`获取表 ${table.name} 详细信息失败:`, error);
-          return table; // 出错时保留基本信息
+          // 出错时标记为不可访问，并记录错误信息
+          return {
+            ...table,
+            accessible: false,
+            accessError: error instanceof Error ? error.message : '未知错误'
+          };
         }
       })
     );
@@ -214,7 +230,7 @@ export async function getTables(database?: string): Promise<TableInfo[]> {
  * 获取表信息
  * @param tableName 表名
  * @param database 数据库名称
- * @returns 表详细信息
+ * @returns 表详细信息或错误信息
  */
 export async function getTableInfo(tableName: string, database?: string): Promise<TableInfo | null> {
   try {
@@ -223,36 +239,60 @@ export async function getTableInfo(tableName: string, database?: string): Promis
       getTableInfo(params: GetTableInfoParams): Promise<SDKTableInfoResult>;
     };
     
-    const result = await db.getTableInfo({
-      table: tableName,
-      database: database || 'main'
-    });
+    // 确保表名使用双引号包裹，避免特殊字符问题
+    const safeTableName = tableName.includes('"') ? tableName : `"${tableName}"`;
     
-    if (!result.table) {
-      return null;
+    try {
+      const result = await db.getTableInfo({
+        table: safeTableName,
+        database: database || 'main'
+      });
+      
+      if (!result.table) {
+        console.error(`表 ${tableName} 不存在或无法访问`);
+        return null;
+      }
+      
+      const table = result.table;
+      
+      return {
+        name: table.name,
+        rowCount: table.row_count || 0,
+        sizeBytes: table.size_bytes || 0,
+        schema: table.columns ? table.columns.map(col => ({
+          name: col.name,
+          type: col.type,
+          nullable: col.nullable || false,
+          primary: col.primary_key || false,
+          unique: col.unique || false,
+          default: col.default_value
+        })) : [],
+        created: table.created_at,
+        lastModified: table.last_modified
+      };
+    } catch (innerError) {
+      // 处理特定的表访问错误
+      console.error(`获取表 ${tableName} 信息时发生错误:`, innerError);
+      
+      // 根据错误类型提供更详细的错误信息
+      const apiError = handleError(innerError);
+      if (apiError.message.includes("no such table")) {
+        // 表不存在错误
+        console.error(`表 ${tableName} 不存在`);
+      } else if (apiError.message.includes("permission")) {
+        // 权限错误
+        console.error(`没有访问表 ${tableName} 的权限`);
+      }
+      
+      // 重新抛出错误，添加上下文信息
+      throw new Error(`无法访问表 ${tableName}: ${apiError.message}`);
     }
-    
-    const table = result.table;
-    
-    return {
-      name: table.name,
-      rowCount: table.row_count || 0,
-      sizeBytes: table.size_bytes || 0,
-      schema: table.columns ? table.columns.map(col => ({
-        name: col.name,
-        type: col.type,
-        nullable: col.nullable || false,
-        primary: col.primary_key || false,
-        unique: col.unique || false,
-        default: col.default_value
-      })) : [],
-      created: table.created_at,
-      lastModified: table.last_modified
-    };
     
   } catch (error) {
     const apiError = handleError(error);
     console.error('获取表信息失败:', apiError);
+    
+    // 返回null，调用方需要检查结果
     return null;
   }
 }

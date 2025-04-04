@@ -11,6 +11,8 @@ import { getTableInfo, deleteTable } from "@/lib/api/table-management-service";
 import { getTableData } from "@/lib/api/sql-service";
 import { useLoading } from "@/contexts/loading-context";
 import Link from "next/link";
+import TableNotFound from "@/components/table-not-found";
+import TableDiagnose from "@/components/table-diagnose";
 
 export default function TableDetailPage({ params }: { params: { tableName: string } }) {
   const router = useRouter();
@@ -19,6 +21,7 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
   const [tableData, setTableData] = useState<any[]>([]);
   const [dataCount, setDataCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const { setModuleLoading } = useLoading();
 
   useEffect(() => {
@@ -28,10 +31,19 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
   const loadTableDetails = async () => {
     setIsLoading(true);
     setModuleLoading('sqlite', true);
+    setError(null);
     
     try {
       // 获取表结构信息
       const info = await getTableInfo(tableName);
+      
+      if (!info) {
+        setError(`Table "${tableName}" not found`);
+        setIsLoading(false);
+        setModuleLoading('sqlite', false);
+        return;
+      }
+      
       setTableInfo(info);
       
       // 获取表数据
@@ -44,7 +56,7 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
       }
     } catch (error) {
       console.error("Error loading table details:", error);
-      toast.error("Failed to load table details");
+      setError(error instanceof Error ? error.message : "Failed to load table details");
     } finally {
       setIsLoading(false);
       setModuleLoading('sqlite', false);
@@ -141,11 +153,18 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
         </div>
       </div>
 
+      {error && (
+        <>
+          <TableNotFound tableName={tableName} errorMessage={error} />
+          <TableDiagnose tableName={tableName} />
+        </>
+      )}
+
       {isLoading ? (
         <div className="flex justify-center py-12">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
-      ) : (
+      ) : !error && (
         <>
           {/* 表概述 */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

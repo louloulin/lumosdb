@@ -150,7 +150,6 @@ describe('VectorClient', () => {
     const mockCollectionName = 'testCollection';
     const mockQueryVector = [0.1, 0.2, 0.3];
     const mockTopK = 5;
-    const mockMetadataFilter = { source: 'test' };
     
     const mockResults: SearchResult[] = [
       { id: 'vector1', score: 0.95, metadata: { source: 'test' } },
@@ -166,14 +165,70 @@ describe('VectorClient', () => {
     mockApiClient.post.mockResolvedValue(mockResponse);
     
     // 调用方法
-    const result = await vectorClient.search(mockCollectionName, mockQueryVector, mockTopK, mockMetadataFilter);
+    const result = await vectorClient.search(mockCollectionName, mockQueryVector, mockTopK);
     
     // 验证
     expect(mockApiClient.post).toHaveBeenCalledWith(`/api/vector/collections/${mockCollectionName}/search`, {
-      query_vector: mockQueryVector,
-      top_k: mockTopK,
-      filter: mockMetadataFilter
+      vector: mockQueryVector,
+      top_k: mockTopK
     });
     expect(result).toEqual(mockResults);
+  });
+
+  test('createIndex should call apiClient.post with correct parameters', async () => {
+    const mockCollectionName = 'testCollection';
+    const mockIndexType = 'hnsw';
+    const mockParameters = { M: 16, ef_construction: 200 };
+    
+    const mockResponse: ApiResponse<void> = {
+      success: true
+    };
+    
+    // 设置mock返回值
+    mockApiClient.post.mockResolvedValue(mockResponse);
+    
+    // 调用方法
+    await vectorClient.createIndex(mockCollectionName, mockIndexType, mockParameters);
+    
+    // 验证
+    expect(mockApiClient.post).toHaveBeenCalledWith(
+      `/api/vector/collections/${mockCollectionName}/index/${mockIndexType}`, 
+      { parameters: mockParameters }
+    );
+  });
+
+  test('deleteIndex should call apiClient.delete with correct parameters', async () => {
+    const mockCollectionName = 'testCollection';
+    
+    const mockResponse: ApiResponse<void> = {
+      success: true
+    };
+    
+    // 设置mock返回值
+    mockApiClient.delete.mockResolvedValue(mockResponse);
+    
+    // 调用方法
+    await vectorClient.deleteIndex(mockCollectionName);
+    
+    // 验证
+    expect(mockApiClient.delete).toHaveBeenCalledWith(
+      `/api/vector/collections/${mockCollectionName}/index`
+    );
+  });
+
+  test('createIndex should throw error when response is not successful', async () => {
+    const mockCollectionName = 'testCollection';
+    const mockIndexType = 'hnsw';
+    
+    const mockResponse: ApiResponse<void> = {
+      success: false,
+      error: { code: 'ERROR', message: 'Failed to create index' }
+    };
+    
+    // 设置mock返回值
+    mockApiClient.post.mockResolvedValue(mockResponse);
+    
+    // 验证抛出错误
+    await expect(vectorClient.createIndex(mockCollectionName, mockIndexType)).rejects.toThrow('Failed to create index');
   });
 }); 

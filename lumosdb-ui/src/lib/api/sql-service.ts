@@ -143,9 +143,12 @@ export async function getTableData(
     const { limit = 10, offset = 0 } = options;
     const dbClient = getDbClient();
     
+    // 确保表名使用双引号包裹，防止SQL注入和特殊字符问题
+    const safeTableName = tableName.includes('"') ? tableName : `"${tableName}"`;
+    
     // 构建分页查询SQL
-    const countQuery = `SELECT COUNT(*) as total FROM ${tableName}`;
-    const dataQuery = `SELECT * FROM ${tableName} LIMIT ${limit} OFFSET ${offset}`;
+    const countQuery = `SELECT COUNT(*) as total FROM ${safeTableName}`;
+    const dataQuery = `SELECT * FROM ${safeTableName} LIMIT ${limit} OFFSET ${offset}`;
     
     // 并行执行两个查询以提高效率
     const [countResult, dataResult] = await Promise.all([
@@ -161,6 +164,7 @@ export async function getTableData(
       error: null
     };
   } catch (error) {
+    console.error(`获取表 ${tableName} 数据失败:`, error);
     return {
       data: null,
       count: 0,

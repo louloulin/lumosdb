@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, FileDown, RefreshCw, Search, Trash2, Database, Loader2 } from "lucide-react";
+import { Plus, FileDown, RefreshCw, Search, Trash2, Database, Loader2, AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getTables, deleteTable, truncateTable } from "@/lib/api/table-management-service";
@@ -37,6 +37,8 @@ export default function SQLitePage() {
     schema: ColumnInfo[];
     createdAt?: string;
     lastModified?: string;
+    accessible?: boolean;
+    accessError?: string;
   }>>([]);
   
   const [searchQuery, setSearchQuery] = useState("");
@@ -226,7 +228,15 @@ export default function SQLitePage() {
               <TableBody>
                 {filteredTables.map((table) => (
                   <TableRow key={table.name}>
-                    <TableCell className="font-medium">{table.name}</TableCell>
+                    <TableCell className="font-medium">
+                      {table.name}
+                      {table.accessible === false && (
+                        <span className="inline-flex items-center ml-2 px-1.5 py-0.5 rounded-md text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-500">
+                          <AlertTriangle className="mr-1 h-3 w-3" />
+                          访问受限
+                        </span>
+                      )}
+                    </TableCell>
                     <TableCell>{table.rowCount.toLocaleString()}</TableCell>
                     <TableCell>{formatSize(table.sizeBytes)}</TableCell>
                     <TableCell>{table.schema.length}</TableCell>

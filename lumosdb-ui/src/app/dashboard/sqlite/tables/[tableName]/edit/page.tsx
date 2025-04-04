@@ -17,6 +17,7 @@ import { getTableInfo } from "@/lib/api/table-management-service";
 import { executeSQL } from "@/lib/api/sql-service";
 import { useLoading } from "@/contexts/loading-context";
 import Link from "next/link";
+import TableNotFound from "@/components/table-not-found";
 
 // SQLite数据类型
 const dataTypes = [
@@ -355,10 +356,10 @@ export default function EditTablePage({ params }: { params: { tableName: string 
       </div>
 
       {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 px-4 py-3 rounded-md mb-4 flex items-start gap-2">
-          <AlertTriangle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-          <div>{error}</div>
-        </div>
+        <TableNotFound 
+          tableName={tableName} 
+          errorMessage={error}
+        />
       )}
 
       {isLoading ? (
