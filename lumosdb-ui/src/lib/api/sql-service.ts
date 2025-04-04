@@ -1,6 +1,5 @@
 import { getDbClient } from './sdk-client';
 // 导入SDK中的类型，用于实现服务
-import type { TableInfo as SDKTableInfo } from '@sdk';
 
 /**
  * UI中使用的查询结果格式
@@ -34,8 +33,11 @@ export async function executeSQLQuery(query: string): Promise<QueryResult> {
     const startTime = performance.now();
     const dbClient = getDbClient();
     
+    // 确保查询中的表名安全，检测并添加引号
+    const safeQuery = ensureSafeTableNames(query);
+    
     // 使用SDK执行查询
-    const result = await dbClient.query(query);
+    const result = await dbClient.query(safeQuery);
     const endTime = performance.now();
     const duration = endTime - startTime;
     
@@ -53,6 +55,24 @@ export async function executeSQLQuery(query: string): Promise<QueryResult> {
       duration: 0
     };
   }
+}
+
+/**
+ * 确保查询中的表名安全，检测并添加引号
+ * @param query SQL查询语句
+ * @returns 安全的SQL查询语句
+ */
+function ensureSafeTableNames(query: string): string {
+  // 如果是简单的SELECT FROM语句，确保表名有引号
+  // 将FROM table或JOIN table模式转换为FROM "table"或JOIN "table"
+  return query.replace(/\b(FROM|JOIN)\s+([^\s"',()[\]]+)/gi, (match, keyword, tableName) => {
+    // 如果表名已经有引号，不做修改
+    if (tableName.startsWith('"') && tableName.endsWith('"')) {
+      return match;
+    }
+    // 否则添加双引号
+    return `${keyword} "${tableName}"`;
+  });
 }
 
 /**

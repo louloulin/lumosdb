@@ -22,6 +22,7 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
   const [dataCount, setDataCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
   const { setModuleLoading } = useLoading();
 
   useEffect(() => {
@@ -32,13 +33,14 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
     setIsLoading(true);
     setModuleLoading('sqlite', true);
     setError(null);
+    setShowDiagnostics(false);
     
     try {
       // 获取表结构信息
       const info = await getTableInfo(tableName);
       
       if (!info) {
-        setError(`Table "${tableName}" not found`);
+        setError(`表 "${tableName}" 不存在或无法访问`);
         setIsLoading(false);
         setModuleLoading('sqlite', false);
         return;
@@ -49,14 +51,14 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
       // 获取表数据
       const result = await getTableData(tableName, { limit: 50, offset: 0 });
       if (result.error) {
-        toast.error(`Failed to load table data: ${result.error}`);
+        toast.error(`加载表数据失败: ${result.error}`);
       } else {
         setTableData(result.data || []);
         setDataCount(result.count);
       }
     } catch (error) {
-      console.error("Error loading table details:", error);
-      setError(error instanceof Error ? error.message : "Failed to load table details");
+      console.error("加载表详情失败:", error);
+      setError(error instanceof Error ? error.message : "加载表详情失败");
     } finally {
       setIsLoading(false);
       setModuleLoading('sqlite', false);
@@ -107,6 +109,11 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
+  // 切换诊断视图
+  const toggleDiagnostics = () => {
+    setShowDiagnostics(!showDiagnostics);
+  };
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center">
@@ -155,8 +162,12 @@ export default function TableDetailPage({ params }: { params: { tableName: strin
 
       {error && (
         <>
-          <TableNotFound tableName={tableName} errorMessage={error} />
-          <TableDiagnose tableName={tableName} />
+          <TableNotFound 
+            tableName={tableName} 
+            errorMessage={error}
+            onDiagnose={toggleDiagnostics}
+          />
+          {showDiagnostics && <TableDiagnose tableName={tableName} />}
         </>
       )}
 

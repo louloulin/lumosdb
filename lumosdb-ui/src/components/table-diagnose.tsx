@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, Check, Loader2, Database, ShieldAlert, FileCode } from "lucide-react";
-import { executeSQL } from "@/lib/api/sql-service";
+import { AlertCircle, Check, Loader2, Database, ShieldAlert, FileCode, Hash } from "lucide-react";
+import { executeSQLQuery } from "@/lib/api/sql-service";
 
 interface TableDiagnoseProps {
   tableName: string;
@@ -14,6 +14,7 @@ export default function TableDiagnose({ tableName }: TableDiagnoseProps) {
     tableExists: boolean;
     hasPermission: boolean;
     canQuery: boolean;
+    specialCharsHandled: boolean;
     sqliteInfo: string;
     completed: boolean;
     error?: string;
@@ -27,37 +28,58 @@ export default function TableDiagnose({ tableName }: TableDiagnoseProps) {
       tableExists: false,
       hasPermission: false,
       canQuery: false,
+      specialCharsHandled: false,
       sqliteInfo: "",
       completed: false,
     };
     
     try {
-      // 检查表是否存在
+      // 检查表是否存在 - 注意使用executeSQLQuery而非executeSQL
       const existsQuery = `SELECT name FROM sqlite_master WHERE type='table' AND name='${tableName}'`;
-      const existsResult = await executeSQL(existsQuery);
+      const existsResult = await executeSQLQuery(existsQuery);
       
-      if (!existsResult.error && existsResult.data && (existsResult.data as any).length > 0) {
+      if (!existsResult.error && existsResult.data && existsResult.data.length > 0) {
         results.tableExists = true;
         
         // 检查表结构
         const structureQuery = `PRAGMA table_info("${tableName}")`;
-        const structureResult = await executeSQL(structureQuery);
+        const structureResult = await executeSQLQuery(structureQuery);
         
         results.hasPermission = !structureResult.error;
         
         // 尝试查询表
         const queryTest = `SELECT * FROM "${tableName}" LIMIT 1`;
-        const queryResult = await executeSQL(queryTest);
+        const queryResult = await executeSQLQuery(queryTest);
         
         results.canQuery = !queryResult.error;
+        
+        // 测试特殊字符处理
+        // 使用带引号和不带引号的表名分别尝试，验证特殊字符处理能力
+        if (results.canQuery) {
+          const unquotedQuery = `SELECT * FROM ${tableName} LIMIT 1`;
+          const quotedQuery = `SELECT * FROM "${tableName}" LIMIT 1`;
+          
+          try {
+            // 两种方式都尝试
+            const unquotedResult = await executeSQLQuery(unquotedQuery);
+            const quotedResult = await executeSQLQuery(quotedQuery);
+            
+            // 如果至少一个查询成功，则特殊字符处理正常
+            results.specialCharsHandled = !unquotedResult.error || !quotedResult.error;
+          } catch (error) {
+            // 如果带引号的查询失败，说明特殊字符处理有问题
+            results.specialCharsHandled = false;
+          }
+        }
       }
       
       // 获取SQLite版本和配置信息
       const versionQuery = `SELECT sqlite_version() as version, * FROM pragma_compile_options LIMIT 10`;
-      const versionResult = await executeSQL(versionQuery);
+      const versionResult = await executeSQLQuery(versionQuery);
       
-      if (!versionResult.error && versionResult.data) {
-        results.sqliteInfo = `SQLite ${(versionResult.data as any)[0]?.version || 'Unknown'}`;
+      if (!versionResult.error && versionResult.data && versionResult.data.length > 0) {
+        const versionInfo = versionResult.data[0];
+        results.sqliteInfo = `SQLite ${versionInfo?.version || 'Unknown'}`;
       }
       
       results.completed = true;
@@ -100,7 +122,7 @@ export default function TableDiagnose({ tableName }: TableDiagnoseProps) {
         
         {diagnosticResults && diagnosticResults.completed && (
           <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
               <div className={`p-4 rounded-lg flex items-center ${
                 diagnosticResults.tableExists 
                   ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' 
@@ -160,6 +182,26 @@ export default function TableDiagnose({ tableName }: TableDiagnoseProps) {
                   </p>
                 </div>
               </div>
+              
+              <div className={`p-4 rounded-lg flex items-center ${
+                diagnosticResults.specialCharsHandled 
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300' 
+                  : 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300'
+              }`}>
+                {diagnosticResults.specialCharsHandled ? (
+                  <Check className="mr-2 h-5 w-5" />
+                ) : (
+                  <Hash className="mr-2 h-5 w-5" />
+                )}
+                <div>
+                  <p className="font-medium">特殊字符</p>
+                  <p className="text-sm">
+                    {diagnosticResults.specialCharsHandled 
+                      ? '特殊字符处理正常' 
+                      : '表名可能包含特殊字符'}
+                  </p>
+                </div>
+              </div>
             </div>
             
             {diagnosticResults.error && (
@@ -175,7 +217,8 @@ export default function TableDiagnose({ tableName }: TableDiagnoseProps) {
                 {!diagnosticResults.tableExists && "表不存在于数据库中，请检查表名是否正确或尝试创建表。"}
                 {diagnosticResults.tableExists && !diagnosticResults.hasPermission && "表存在但无法访问其结构，可能是权限问题。"}
                 {diagnosticResults.tableExists && diagnosticResults.hasPermission && !diagnosticResults.canQuery && "可以访问表结构但无法查询数据，可能是表损坏或查询语法问题。"}
-                {diagnosticResults.tableExists && diagnosticResults.hasPermission && diagnosticResults.canQuery && "表结构和数据均可正常访问，如仍有问题，可能是应用程序层面的问题。"}
+                {diagnosticResults.tableExists && diagnosticResults.hasPermission && diagnosticResults.canQuery && !diagnosticResults.specialCharsHandled && "表名可能包含特殊字符，请确保在SQL查询中使用双引号包裹表名。"}
+                {diagnosticResults.tableExists && diagnosticResults.hasPermission && diagnosticResults.canQuery && diagnosticResults.specialCharsHandled && "表结构和数据均可正常访问，如仍有问题，可能是应用程序层面的问题。"}
               </p>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-4">
                 SQLite信息: {diagnosticResults.sqliteInfo || "未知"}

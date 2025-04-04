@@ -66,6 +66,60 @@ export function handleError(error: unknown): ApiError {
     );
   }
 
+  // 处理常见的SQL和数据库错误
+  let errorMessage = '';
+  if (error instanceof Error) {
+    errorMessage = error.message;
+  } else if (typeof error === 'string') {
+    errorMessage = error;
+  } else if (error && typeof error === 'object') {
+    errorMessage = String(error);
+  }
+
+  // 表不存在错误
+  if (errorMessage.includes('no such table')) {
+    const tableMatch = errorMessage.match(/no such table:?\s*(\S+)/i);
+    const tableName = tableMatch ? tableMatch[1] : '未知表';
+    return createApiError(
+      ErrorType.NOT_FOUND,
+      `表 ${tableName} 不存在或无法访问`,
+      { tableName },
+      error
+    );
+  }
+
+  // SQL语法错误
+  if (errorMessage.includes('syntax error')) {
+    return createApiError(
+      ErrorType.VALIDATION,
+      `SQL语法错误: ${errorMessage}`,
+      {},
+      error
+    );
+  }
+
+  // 执行SELECT查询的execute函数错误
+  if (errorMessage.includes('Execute returned results') || 
+      errorMessage.includes('did you mean to call query')) {
+    return createApiError(
+      ErrorType.VALIDATION,
+      '请使用查询功能而不是执行功能来运行SELECT语句',
+      {},
+      error
+    );
+  }
+
+  // 权限错误
+  if (errorMessage.toLowerCase().includes('permission') || 
+      errorMessage.toLowerCase().includes('access denied')) {
+    return createApiError(
+      ErrorType.PERMISSION,
+      '没有足够的权限执行此操作',
+      {},
+      error
+    );
+  }
+
   // 处理HTTP错误
   if (
     typeof error === 'object' &&
@@ -157,6 +211,40 @@ export interface ErrorMessageProps {
  * @returns 用户友好的错误消息
  */
 export function getUserFriendlyErrorMessage(error: ApiError): string {
+  // 检查特定的错误代码和消息模式
+  if (error.message) {
+    // 表不存在错误
+    if (error.message.includes('no such table')) {
+      const tableMatch = error.message.match(/no such table:?\s*(\S+)/i);
+      const tableName = tableMatch ? tableMatch[1] : '';
+      return `表 ${tableName} 不存在或已被删除，请检查表名或尝试创建新表。`;
+    }
+    
+    // SQL语法错误
+    if (error.message.includes('syntax error')) {
+      return `SQL语法错误: ${error.message}。请检查您的SQL语句是否正确。`;
+    }
+    
+    // 执行SELECT查询错误
+    if (error.message.includes('Execute returned results') || 
+        error.message.includes('did you mean to call query')) {
+      return `请使用查询功能而不是执行功能来运行SELECT语句。`;
+    }
+    
+    // 权限错误
+    if (error.message.toLowerCase().includes('permission') || 
+        error.message.toLowerCase().includes('access denied')) {
+      return `权限错误: 您没有足够的权限执行此操作。`;
+    }
+    
+    // 特殊字符错误
+    if (error.message.includes('identifier') || 
+        error.message.includes('unrecognized token')) {
+      return `表名或列名可能包含特殊字符，请尝试在SQL语句中使用双引号("...")包裹这些标识符。`;
+    }
+  }
+
+  // 基于错误类型的通用消息
   switch (error.type) {
     case ErrorType.NETWORK:
       return '网络连接错误，请检查您的网络连接并重试。';
